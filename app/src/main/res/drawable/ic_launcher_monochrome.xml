@@ -6,5 +6,5 @@
     <!-- Single-colour folder silhouette for themed (monochrome) icons. -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M11,36 h27 l8,8 h49 a6,6 0 0 1 6,6 v35 a6,6 0 0 1 -6,6 h-86 a6,6 0 0 1 -6,-6 v-43 a6,6 0 0 1 6,-6 z" />
+        android:pathData="M18,26 h26 l10,10 h46 a8,8 0 0 1 8,8 v44 a8,8 0 0 1 -8,8 h-72 a8,8 0 0 1 -8,-8 v-54 a8,8 0 0 1 8,-8 z" />
 </vector>
