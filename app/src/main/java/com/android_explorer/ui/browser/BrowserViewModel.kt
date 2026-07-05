@@ -131,7 +131,7 @@ class BrowserViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun toggleView() {
-        val next = if (_state.value.view == ViewMode.LIST) ViewMode.DETAILS else ViewMode.LIST
+        val next = if (_state.value.view == ViewMode.LIST) ViewMode.GRID else ViewMode.LIST
         _state.value = _state.value.copy(view = next)
     }
 

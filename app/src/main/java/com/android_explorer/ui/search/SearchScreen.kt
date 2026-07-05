@@ -1,18 +1,19 @@
-package com.android_explorer.ui.category
+package com.android_explorer.ui.search
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items as gridItems
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -20,65 +21,68 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.android_explorer.archive.ArchiveProgress
-import com.android_explorer.archive.ArchiveProgressBus
 import com.android_explorer.data.FileItem
-import com.android_explorer.data.MediaCategory
 import com.android_explorer.ui.components.ArchiveContentsDialog
 import com.android_explorer.ui.components.ConfirmDialog
 import com.android_explorer.ui.components.FileDetailsDialog
-import com.android_explorer.ui.components.FileDetailsItem
-import com.android_explorer.ui.components.FileGridItem
+import com.android_explorer.ui.components.FileListItem
 import com.android_explorer.ui.components.RecentsContextSheet
 import com.android_explorer.util.FileOpener
 import com.android_explorer.util.Wallpaper
 
 /**
- * A device-wide, flat list of every file in one [MediaCategory] (e.g. all images). Reuses the
- * details row (thumbnails for images/video) and the Recents context menu — categories are a flat
- * set of files with no browse/paste context, exactly like Recents.
+ * Full-screen filename search across all storage. Type a query, press enter, and matching files or
+ * folders (by name, any extension) are listed. Tapping opens files via the shared resolver, folders
+ * in the browser, and archives in the contents preview.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CategoryScreen(
-    category: MediaCategory,
+fun SearchScreen(
     onExit: () -> Unit,
     onOpenFile: (FileItem) -> Unit,
-    viewModel: CategoryViewModel = viewModel(),
+    onOpenFolder: (java.io.File) -> Unit,
+    viewModel: SearchViewModel = viewModel(),
 ) {
-    // Load on entry / when the category changes; the ViewModel is Activity-scoped and reused.
-    LaunchedEffect(category) { viewModel.load(category) }
     val state by viewModel.state.collectAsStateWithLifecycle()
     val details by viewModel.details.collectAsStateWithLifecycle()
-    val progress by ArchiveProgressBus.progress.collectAsStateWithLifecycle()
-    val root = remember { android.os.Environment.getExternalStorageDirectory().absolutePath }
-    val context = androidx.compose.ui.platform.LocalContext.current
+    val context = LocalContext.current
+    val keyboard = LocalSoftwareKeyboardController.current
+    val focusRequester = remember { FocusRequester() }
 
     var contextItem by remember { mutableStateOf<FileItem?>(null) }
     var previewItem by remember { mutableStateOf<FileItem?>(null) }
     var deleteItem by remember { mutableStateOf<FileItem?>(null) }
 
-    // Re-query after a successful extract (a new folder of files may now exist).
-    LaunchedEffect(progress?.state) {
-        if (progress?.state == ArchiveProgress.State.SUCCESS) viewModel.refresh()
-    }
+    // Auto-focus the field and raise the keyboard on entry.
+    androidx.compose.runtime.LaunchedEffect(Unit) { focusRequester.requestFocus() }
+
     BackHandler { onExit() }
 
-    // Archives (rare in Documents) preview their contents; everything else defers to the host.
-    val onOpen: (FileItem) -> Unit = { if (it.isArchive) previewItem = it else onOpenFile(it) }
+    val onOpen: (FileItem) -> Unit = { item ->
+        when {
+            item.isDirectory -> onOpenFolder(item.file)
+            item.isArchive -> previewItem = item
+            else -> onOpenFile(item)
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -88,46 +92,52 @@ fun CategoryScreen(
                         Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back")
                     }
                 },
-                title = { Text(category.title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                title = {
+                    TextField(
+                        value = state.query,
+                        onValueChange = viewModel::setQuery,
+                        modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
+                        placeholder = { Text("Search files") },
+                        singleLine = true,
+                        trailingIcon = {
+                            if (state.query.isNotEmpty()) {
+                                IconButton(onClick = { viewModel.setQuery("") }) {
+                                    Icon(Icons.Rounded.Close, contentDescription = "Clear")
+                                }
+                            }
+                        },
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                        keyboardActions = KeyboardActions(onSearch = {
+                            keyboard?.hide()
+                            viewModel.search()
+                        }),
+                        colors = TextFieldDefaults.colors(
+                            focusedContainerColor = androidx.compose.ui.graphics.Color.Transparent,
+                            unfocusedContainerColor = androidx.compose.ui.graphics.Color.Transparent,
+                            focusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
+                            unfocusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
+                        ),
+                    )
+                },
             )
         },
     ) { padding ->
         Box(Modifier.padding(padding).fillMaxSize()) {
             when {
-                state.loading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
-                state.items.isEmpty() -> Text(
-                    "No ${category.title.lowercase()} found",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.align(Alignment.Center),
-                )
-                // The visual categories browse best as a grid; text-y ones stay a list where names matter.
-                category == MediaCategory.IMAGES || category == MediaCategory.VIDEO -> LazyVerticalGrid(
-                    columns = GridCells.Adaptive(minSize = 104.dp),
-                    contentPadding = PaddingValues(12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    gridItems(state.items, key = { it.path }) { item ->
-                        FileGridItem(
-                            item = item,
-                            selected = false,
-                            onClick = { onOpen(item) },
-                            onLongClick = { contextItem = item },
-                        )
-                    }
-                }
+                state.searching -> CircularProgressIndicator(Modifier.align(Alignment.Center))
+                !state.hasSearched -> Hint("Search files by name across all storage.")
+                state.results.isEmpty() -> Hint("No files match “${state.query}”.")
                 else -> LazyColumn(
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(2.dp),
                 ) {
-                    items(state.items, key = { it.path }) { item ->
-                        FileDetailsItem(
+                    items(state.results, key = { it.path }) { item ->
+                        FileListItem(
                             item = item,
                             selected = false,
                             folderSize = null,
                             onClick = { onOpen(item) },
                             onLongClick = { contextItem = item },
-                            subtitleOverride = parentLabel(item, root),
                         )
                     }
                 }
@@ -167,12 +177,13 @@ fun CategoryScreen(
     }
 }
 
-/** The file's containing folder, shown relative to the storage root (e.g. "DCIM/Camera"). */
-private fun parentLabel(item: FileItem, root: String): String {
-    val parent = item.file.parent ?: return ""
-    return when {
-        parent == root -> "Internal storage"
-        parent.startsWith(root) -> parent.removePrefix(root).trim('/')
-        else -> parent
+@Composable
+private fun Hint(text: String) {
+    Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
+        Text(
+            text,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }

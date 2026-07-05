@@ -46,4 +46,4 @@ data class FileItem(
 
 enum class SortBy { NAME, SIZE, DATE, TYPE }
 
-enum class ViewMode { LIST, DETAILS }
+enum class ViewMode { LIST, GRID }

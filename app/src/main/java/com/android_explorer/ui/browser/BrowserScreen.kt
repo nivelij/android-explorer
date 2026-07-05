@@ -8,6 +8,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Archive
@@ -19,9 +22,10 @@ import androidx.compose.material.icons.rounded.CreateNewFolder
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.NoteAdd
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Sort
+import androidx.compose.material.icons.rounded.GridView
 import androidx.compose.material.icons.rounded.Unarchive
-import androidx.compose.material.icons.rounded.ViewAgenda
 import androidx.compose.material.icons.rounded.ViewList
 import androidx.compose.material.icons.rounded.Visibility
 import androidx.compose.material3.CircularProgressIndicator
@@ -58,18 +62,20 @@ import com.android_explorer.ui.components.CompressDialog
 import com.android_explorer.ui.components.ConfirmDialog
 import com.android_explorer.ui.components.FileContextSheet
 import com.android_explorer.ui.components.FileDetailsDialog
-import com.android_explorer.ui.components.FileDetailsItem
+import com.android_explorer.ui.components.FileGridItem
 import com.android_explorer.ui.components.FileListItem
 import com.android_explorer.ui.components.FolderPickerDialog
 import com.android_explorer.ui.components.TextPromptDialog
 import com.android_explorer.ui.components.ThemeMenuItems
 import com.android_explorer.util.FileOpener
+import com.android_explorer.util.Wallpaper
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BrowserScreen(
     onExit: () -> Unit,
     onOpenFile: (FileItem) -> Unit,
+    onSearch: () -> Unit,
     startDir: java.io.File? = null,
     viewModel: BrowserViewModel = viewModel(),
 ) {
@@ -121,10 +127,11 @@ fun BrowserScreen(
             } else {
                 BrowserBar(
                     title = if (viewModel.canGoUp) state.dir.name else "Internal storage",
-                    details = state.view == ViewMode.DETAILS,
+                    grid = state.view == ViewMode.GRID,
                     showPaste = state.hasClipboard,
                     onPaste = viewModel::paste,
                     onUp = { if (!viewModel.navigateUp()) onExit() },
+                    onSearch = onSearch,
                     onToggleView = viewModel::toggleView,
                     onSort = viewModel::setSort,
                     onNewFolder = { showNewFolder = true },
@@ -211,6 +218,8 @@ fun BrowserScreen(
             onZip = { compressItems = listOf(item); contextItem = null },
             onViewContents = if (item.isArchive) { { previewItem = item; contextItem = null } } else null,
             onExtract = if (item.isArchive) { { viewModel.extract(item); contextItem = null } } else null,
+            onShare = if (!item.isDirectory) { { FileOpener.share(context, item.file); contextItem = null } } else null,
+            onSetWallpaper = if (item.isImage) { { Wallpaper.setAsWallpaper(context, item.file); contextItem = null } } else null,
             onDelete = { deleteItems = listOf(item); contextItem = null },
             onSelect = { viewModel.toggleSelect(item); contextItem = null },
             onDetails = { viewModel.showDetails(item); contextItem = null },
@@ -266,22 +275,30 @@ private fun FileListing(
     onClick: (FileItem) -> Unit,
     onLongClick: (FileItem) -> Unit,
 ) {
-    LazyColumn(
-        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(2.dp),
-    ) {
-        items(state.items, key = { it.path }) { item ->
-            val selected = item.path in state.selected
-            val folderSize = if (item.isDirectory) state.folderSizes[item.path] else null
-            if (state.view == ViewMode.DETAILS) {
-                FileDetailsItem(
+    if (state.view == ViewMode.GRID) {
+        LazyVerticalGrid(
+            columns = GridCells.Adaptive(minSize = 104.dp),
+            contentPadding = PaddingValues(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            gridItems(state.items, key = { it.path }) { item ->
+                FileGridItem(
                     item = item,
-                    selected = selected,
-                    folderSize = folderSize,
+                    selected = item.path in state.selected,
                     onClick = { onClick(item) },
                     onLongClick = { onLongClick(item) },
                 )
-            } else {
+            }
+        }
+    } else {
+        LazyColumn(
+            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            items(state.items, key = { it.path }) { item ->
+                val selected = item.path in state.selected
+                val folderSize = if (item.isDirectory) state.folderSizes[item.path] else null
                 FileListItem(
                     item = item,
                     selected = selected,
@@ -298,10 +315,11 @@ private fun FileListing(
 @Composable
 private fun BrowserBar(
     title: String,
-    details: Boolean,
+    grid: Boolean,
     showPaste: Boolean,
     onPaste: () -> Unit,
     onUp: () -> Unit,
+    onSearch: () -> Unit,
     onToggleView: () -> Unit,
     onSort: (SortBy) -> Unit,
     onNewFolder: () -> Unit,
@@ -323,10 +341,13 @@ private fun BrowserBar(
                     Icon(Icons.Rounded.ContentPaste, contentDescription = "Paste")
                 }
             }
+            IconButton(onClick = onSearch) {
+                Icon(Icons.Rounded.Search, contentDescription = "Search")
+            }
             IconButton(onClick = onToggleView) {
                 Icon(
-                    if (details) Icons.Rounded.ViewList else Icons.Rounded.ViewAgenda,
-                    contentDescription = if (details) "List view" else "Details view",
+                    if (grid) Icons.Rounded.ViewList else Icons.Rounded.GridView,
+                    contentDescription = if (grid) "List view" else "Grid view",
                 )
             }
             IconButton(onClick = { sortMenu = true }) {

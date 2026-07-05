@@ -25,6 +25,23 @@ object FileOpener {
         }
     }
 
+    /** Shares a file via the native Android share sheet (ACTION_SEND) with a FileProvider URI. */
+    fun share(context: Context, file: File) {
+        try {
+            val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+            val intent = Intent(Intent.ACTION_SEND).apply {
+                type = mimeType(file)
+                putExtra(Intent.EXTRA_STREAM, uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            context.startActivity(
+                Intent.createChooser(intent, "Share").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+        } catch (e: Exception) {
+            Toast.makeText(context, "Can't share: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     private fun mimeType(file: File): String {
         val ext = file.extension.lowercase()
         return MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext) ?: "*/*"

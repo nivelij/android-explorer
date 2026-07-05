@@ -19,8 +19,10 @@ import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.DriveFileRenameOutline
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.OpenInNew
+import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.Unarchive
 import androidx.compose.material.icons.rounded.Visibility
+import androidx.compose.material.icons.rounded.Wallpaper
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -48,6 +50,8 @@ fun FileContextSheet(
     onZip: () -> Unit,
     onViewContents: (() -> Unit)? = null,
     onExtract: (() -> Unit)?,
+    onShare: (() -> Unit)? = null,
+    onSetWallpaper: (() -> Unit)? = null,
     onDelete: () -> Unit,
     onSelect: () -> Unit,
     onDetails: () -> Unit,
@@ -58,6 +62,12 @@ fun FileContextSheet(
         Action(Icons.Rounded.ContentCut, "Cut") { onCut() }
         Action(Icons.Rounded.DriveFileRenameOutline, "Rename") { onRename() }
         Action(Icons.Rounded.Archive, "Compress (Zip)") { onZip() }
+        if (onShare != null) {
+            Action(Icons.Rounded.Share, "Share") { onShare() }
+        }
+        if (onSetWallpaper != null) {
+            Action(Icons.Rounded.Wallpaper, "Set as wallpaper") { onSetWallpaper() }
+        }
         if (onViewContents != null) {
             Action(Icons.Rounded.Visibility, "View contents") { onViewContents() }
         }
@@ -83,11 +93,19 @@ fun RecentsContextSheet(
     onOpen: () -> Unit,
     onViewContents: (() -> Unit)?,
     onExtract: (() -> Unit)?,
+    onShare: (() -> Unit)? = null,
+    onSetWallpaper: (() -> Unit)? = null,
     onDetails: () -> Unit,
     onDelete: () -> Unit,
 ) {
     ContextPopup(item, onDismiss) {
         Action(Icons.Rounded.OpenInNew, "Open") { onOpen() }
+        if (onShare != null) {
+            Action(Icons.Rounded.Share, "Share") { onShare() }
+        }
+        if (onSetWallpaper != null) {
+            Action(Icons.Rounded.Wallpaper, "Set as wallpaper") { onSetWallpaper() }
+        }
         if (onViewContents != null) {
             Action(Icons.Rounded.Visibility, "View contents") { onViewContents() }
         }

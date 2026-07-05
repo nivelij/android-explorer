@@ -31,6 +31,7 @@ import com.android_explorer.ui.editor.EditorScreen
 import com.android_explorer.ui.home.HomeScreen
 import com.android_explorer.ui.home.HomeViewModel
 import com.android_explorer.ui.pdf.PdfScreen
+import com.android_explorer.ui.search.SearchScreen
 import com.android_explorer.ui.theme.AndroidExplorerTheme
 import com.android_explorer.util.FileOpener
 import com.android_explorer.util.Permissions
@@ -62,6 +63,8 @@ private fun AppRoot() {
     // Non-null while viewing a device-wide media category (Documents/Pictures/Music/Video).
     // Stored as the enum name so rememberSaveable can persist it across process death.
     var categoryName by rememberSaveable { mutableStateOf<String?>(null) }
+    // True while the full-screen filename search is open (a top-level destination).
+    var searching by rememberSaveable { mutableStateOf(false) }
     // Activity uses configChanges (no recreation on rotation), so remember survives rotation.
     var editorFile by remember { mutableStateOf<File?>(null) }
     var pdfFile by remember { mutableStateOf<File?>(null) }
@@ -97,6 +100,11 @@ private fun AppRoot() {
         when {
             editing != null -> EditorScreen(file = editing, onClose = { editorFile = null })
             viewingPdf != null -> PdfScreen(file = viewingPdf, onClose = { pdfFile = null })
+            searching -> SearchScreen(
+                onExit = { searching = false },
+                onOpenFile = openFile,
+                onOpenFolder = { browsePath = it.absolutePath; searching = false },
+            )
             category != null -> CategoryScreen(
                 category = category,
                 onExit = { categoryName = null },
@@ -105,6 +113,7 @@ private fun AppRoot() {
             browsing != null -> BrowserScreen(
                 onExit = { browsePath = null },
                 onOpenFile = openFile,
+                onSearch = { searching = true },
                 startDir = File(browsing),
             )
             else -> {
@@ -114,6 +123,7 @@ private fun AppRoot() {
                     onOpenFolder = { browsePath = it.absolutePath },
                     onOpenCategory = { categoryName = it.name },
                     onOpenFile = openFile,
+                    onSearch = { searching = true },
                     onRequestAccess = { context.startActivity(Permissions.allFilesAccessIntent(context)) },
                 )
             }

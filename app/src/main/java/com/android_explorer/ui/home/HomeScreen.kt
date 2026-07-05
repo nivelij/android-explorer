@@ -25,10 +25,10 @@ import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Movie
 import androidx.compose.material.icons.rounded.MusicNote
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -36,6 +36,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -45,6 +46,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -61,6 +63,8 @@ import com.android_explorer.ui.components.FileListItem
 import com.android_explorer.ui.components.PluginsDialog
 import com.android_explorer.ui.components.RecentsContextSheet
 import com.android_explorer.ui.components.StorageMeter
+import com.android_explorer.util.FileOpener
+import com.android_explorer.util.Wallpaper
 import com.android_explorer.ui.components.ThemeOverflowMenu
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -71,10 +75,12 @@ fun HomeScreen(
     onOpenFolder: (java.io.File) -> Unit,
     onOpenCategory: (MediaCategory) -> Unit,
     onOpenFile: (FileItem) -> Unit,
+    onSearch: () -> Unit,
     onRequestAccess: () -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val details by viewModel.details.collectAsStateWithLifecycle()
+    val context = LocalContext.current
     var contextItem by remember { mutableStateOf<FileItem?>(null) }
     var previewItem by remember { mutableStateOf<FileItem?>(null) }
     var deleteItem by remember { mutableStateOf<FileItem?>(null) }
@@ -82,7 +88,7 @@ fun HomeScreen(
 
     Scaffold(
         topBar = {
-            CenterAlignedTopAppBar(
+            TopAppBar(
                 title = {
                     Text(
                         stringResource(R.string.app_name),
@@ -91,6 +97,9 @@ fun HomeScreen(
                     )
                 },
                 actions = {
+                    IconButton(onClick = onSearch) {
+                        Icon(Icons.Rounded.Search, contentDescription = "Search")
+                    }
                     IconButton(onClick = { showPlugins = true }) {
                         Icon(Icons.Rounded.Extension, contentDescription = "Plugins")
                     }
@@ -135,6 +144,8 @@ fun HomeScreen(
             },
             onViewContents = if (item.isArchive) { { previewItem = item; contextItem = null } } else null,
             onExtract = if (item.isArchive) { { viewModel.extract(item); contextItem = null } } else null,
+            onShare = if (!item.isDirectory) { { FileOpener.share(context, item.file); contextItem = null } } else null,
+            onSetWallpaper = if (item.isImage) { { Wallpaper.setAsWallpaper(context, item.file); contextItem = null } } else null,
             onDetails = { viewModel.showDetails(item); contextItem = null },
             onDelete = { deleteItem = item; contextItem = null },
         )

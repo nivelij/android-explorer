@@ -9,6 +9,37 @@ class FileRepository {
 
     val storageRoot: File get() = Environment.getExternalStorageDirectory()
 
+    /**
+     * Recursively finds files/folders whose name contains [query] (case-insensitive), anywhere under
+     * the storage root, regardless of extension. Hidden entries are skipped, unreadable directories
+     * are ignored. Collection is capped for memory; results are ranked name-starts-with first, then
+     * alphabetically, and truncated to [limit].
+     */
+    fun search(query: String, limit: Int = 500): List<FileItem> {
+        val q = query.trim().lowercase(Locale.ROOT)
+        if (q.isEmpty()) return emptyList()
+
+        val matches = ArrayList<FileItem>()
+        val collectCap = 2000
+        val walker = storageRoot.walkTopDown()
+            .onEnter { !it.name.startsWith(".") } // don't descend into hidden directories
+            .onFail { _, _ -> }                   // ignore directories we can't read
+        for (f in walker) {
+            val name = f.name
+            if (name.startsWith(".")) continue
+            if (name.lowercase(Locale.ROOT).contains(q)) {
+                matches.add(FileItem.from(f))
+                if (matches.size >= collectCap) break
+            }
+        }
+        return matches
+            .sortedWith(
+                compareByDescending<FileItem> { it.name.lowercase(Locale.ROOT).startsWith(q) }
+                    .thenBy { it.name.lowercase(Locale.ROOT) },
+            )
+            .take(limit)
+    }
+
     fun list(dir: File, showHidden: Boolean, sortBy: SortBy, ascending: Boolean): List<FileItem> {
         val children = dir.listFiles()?.asList().orEmpty()
             .filter { showHidden || !it.name.startsWith(".") }
