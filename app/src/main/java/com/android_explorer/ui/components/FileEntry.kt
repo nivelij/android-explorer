@@ -173,18 +173,18 @@ private fun Thumbnail(item: FileItem, size: androidx.compose.ui.unit.Dp) {
 
 @Composable
 private fun IconTile(item: FileItem, selected: Boolean, size: androidx.compose.ui.unit.Dp) {
+    val accent = colorFor(item)
     Surface(
         shape = RoundedCornerShape(12.dp),
-        color = if (selected) MaterialTheme.colorScheme.primary
-        else MaterialTheme.colorScheme.surfaceVariant,
+        // Selected → solid primary chip; otherwise a soft chip tinted with the type's accent colour.
+        color = if (selected) MaterialTheme.colorScheme.primary else accent.copy(alpha = 0.16f),
         modifier = Modifier.size(size),
     ) {
         Box(contentAlignment = Alignment.Center) {
             Icon(
                 imageVector = if (selected) Icons.Rounded.CheckCircle else iconFor(item),
                 contentDescription = null,
-                tint = if (selected) MaterialTheme.colorScheme.onPrimary
-                else MaterialTheme.colorScheme.primary,
+                tint = if (selected) MaterialTheme.colorScheme.onPrimary else accent,
                 modifier = Modifier.size(size * 0.55f),
             )
         }

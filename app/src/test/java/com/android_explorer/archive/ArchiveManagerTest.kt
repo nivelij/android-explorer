@@ -123,6 +123,33 @@ class ArchiveManagerTest {
     }
 
     @Test
+    fun listEntries_zip_listsWithoutExtracting() {
+        val src = sampleTree()
+        val zip = File(tmp.root, "list.zip")
+        assertTrue(ArchiveManager.compress(listOf(src), zip, ArchiveType.ZIP, noop) is ArchiveResult.Success)
+
+        val listing = ArchiveManager.listEntries(zip)
+        assertTrue(listing is ArchiveManager.ArchiveListing.Entries)
+        val entries = (listing as ArchiveManager.ArchiveListing.Entries).items
+        val files = entries.filterNot { it.isDirectory }.map { it.name }
+        assertTrue("readme listed", files.any { it.endsWith("readme.txt") })
+        assertTrue("nested notes listed", files.any { it.endsWith("docs/notes.txt") })
+        // Sizes come from headers (no extraction): notes.txt was 5000 'a's.
+        val notes = entries.first { it.name.endsWith("docs/notes.txt") }
+        assertEquals(5000L, notes.size)
+    }
+
+    @Test
+    fun listEntries_encryptedZip_stillListsNames() {
+        // ZIP encrypts content, not the central directory — names remain readable without a password.
+        val enc = makeEncryptedZip("secret")
+        val listing = ArchiveManager.listEntries(enc)
+        assertTrue(listing is ArchiveManager.ArchiveListing.Entries)
+        val files = (listing as ArchiveManager.ArchiveListing.Entries).items.map { it.name }
+        assertTrue(files.any { it.endsWith("readme.txt") })
+    }
+
+    @Test
     fun formatDetection() {
         assertEquals(ArchiveType.TAR_GZ, ArchiveType.fromFileName("backup.tar.gz"))
         assertEquals(ArchiveType.TAR_GZ, ArchiveType.fromFileName("BACKUP.TGZ"))

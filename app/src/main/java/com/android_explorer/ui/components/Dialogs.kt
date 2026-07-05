@@ -11,6 +11,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.FolderOpen
 import androidx.compose.material.icons.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.Unarchive
+import androidx.compose.material.icons.rounded.Visibility
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -77,6 +78,7 @@ fun ConfirmDialog(
 fun ArchiveActionDialog(
     name: String,
     onDismiss: () -> Unit,
+    onViewContents: () -> Unit,
     onExtractHere: () -> Unit,
     onExtractTo: () -> Unit,
     onOpen: () -> Unit,
@@ -86,6 +88,7 @@ fun ArchiveActionDialog(
         title = { Text(name, maxLines = 1) },
         text = {
             Column(Modifier.fillMaxWidth()) {
+                ActionRow(Icons.Rounded.Visibility, "View contents", onViewContents)
                 ActionRow(Icons.Rounded.Unarchive, "Extract here", onExtractHere)
                 ActionRow(Icons.Rounded.FolderOpen, "Extract to folder…", onExtractTo)
                 ActionRow(Icons.Rounded.OpenInNew, "Open with…", onOpen)

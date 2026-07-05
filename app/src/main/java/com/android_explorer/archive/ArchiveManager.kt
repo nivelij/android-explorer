@@ -107,6 +107,94 @@ object ArchiveManager {
         }
     }
 
+    // ---------------------------------------------------------------------- list (preview)
+
+    /** One row in an archive preview: a path inside the archive plus its uncompressed size. */
+    data class ArchiveEntryInfo(val name: String, val size: Long, val isDirectory: Boolean)
+
+    sealed interface ArchiveListing {
+        data class Entries(val items: List<ArchiveEntryInfo>, val truncated: Boolean) : ArchiveListing
+        /** The archive's entry list can't be read without a password (encrypted headers). */
+        data object Encrypted : ArchiveListing
+        data class Failure(val message: String) : ArchiveListing
+    }
+
+    /**
+     * Reads an archive's entry list WITHOUT extracting. Entry names are readable for most encrypted
+     * ZIP/RAR archives (only the content is encrypted); 7z/RAR with encrypted headers report
+     * [ArchiveListing.Encrypted]. Capped at [limit] entries so pathological archives stay bounded.
+     */
+    fun listEntries(archive: File, limit: Int = 5000): ArchiveListing {
+        return try {
+            val type = ArchiveType.fromFileName(archive.name)
+                ?: return ArchiveListing.Failure("Unsupported archive: ${archive.name}")
+            val all = when (type) {
+                ArchiveType.ZIP -> listZip(archive)
+                ArchiveType.SEVEN_Z -> listSevenZ(archive)
+                ArchiveType.RAR -> listRar(archive)
+                ArchiveType.TAR -> listTar(archive, Compressor.NONE)
+                ArchiveType.TAR_GZ -> listTar(archive, Compressor.GZ)
+                ArchiveType.TAR_BZ2 -> listTar(archive, Compressor.BZ2)
+                ArchiveType.TAR_XZ -> listTar(archive, Compressor.XZ)
+                ArchiveType.GZ, ArchiveType.BZ2, ArchiveType.XZ ->
+                    listOf(ArchiveEntryInfo(archive.name.substringBeforeLast('.', archive.name), -1L, false))
+            }
+            ArchiveListing.Entries(all.take(limit), truncated = all.size > limit)
+        } catch (e: org.apache.commons.compress.PasswordRequiredException) {
+            ArchiveListing.Encrypted
+        } catch (e: Exception) {
+            val msg = e.message ?: ""
+            if (msg.contains("password", true) || msg.contains("encrypt", true) ||
+                msg.contains("header", true) && msg.contains("crypt", true)
+            ) {
+                ArchiveListing.Encrypted
+            } else {
+                ArchiveListing.Failure(msg.ifBlank { e.javaClass.simpleName })
+            }
+        }
+    }
+
+    private fun listZip(archive: File): List<ArchiveEntryInfo> =
+        ZipFile.builder().setFile(archive).get().use { zip ->
+            Collections.list(zip.entries).map {
+                ArchiveEntryInfo(it.name, it.size.coerceAtLeast(0), it.isDirectory)
+            }
+        }
+
+    private fun listSevenZ(archive: File): List<ArchiveEntryInfo> {
+        val out = ArrayList<ArchiveEntryInfo>()
+        sevenZ(archive, null).use { sz ->
+            var e = sz.nextEntry
+            while (e != null) {
+                out += ArchiveEntryInfo(e.name, e.size.coerceAtLeast(0), e.isDirectory)
+                e = sz.nextEntry
+            }
+        }
+        return out
+    }
+
+    private fun listRar(archive: File): List<ArchiveEntryInfo> =
+        Archive(archive).use { arch ->
+            arch.fileHeaders.map { h ->
+                val name = (h.fileName ?: h.fileNameString).replace('\\', '/')
+                ArchiveEntryInfo(name, h.fullUnpackSize.coerceAtLeast(0), h.isDirectory)
+            }
+        }
+
+    private fun listTar(archive: File, c: Compressor): List<ArchiveEntryInfo> {
+        val out = ArrayList<ArchiveEntryInfo>()
+        BufferedInputStream(FileInputStream(archive)).use { raw ->
+            TarArchiveInputStream(wrapDecompress(raw, c)).use { tar ->
+                var e = tar.nextEntry
+                while (e != null) {
+                    out += ArchiveEntryInfo(e.name, e.size.coerceAtLeast(0), e.isDirectory)
+                    e = tar.nextEntry
+                }
+            }
+        }
+        return out
+    }
+
     private fun extractZip(archive: File, destDir: File, listener: ArchiveListener, password: String?): Int {
         val encrypted = runCatching { net.lingala.zip4j.ZipFile(archive).isEncrypted }.getOrDefault(false)
         if (encrypted) return extractZipEncrypted(archive, destDir, listener, password)

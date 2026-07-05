@@ -53,6 +53,7 @@ import com.android_explorer.data.FileItem
 import com.android_explorer.data.SortBy
 import com.android_explorer.data.ViewMode
 import com.android_explorer.ui.components.ArchiveActionDialog
+import com.android_explorer.ui.components.ArchiveContentsDialog
 import com.android_explorer.ui.components.CompressDialog
 import com.android_explorer.ui.components.ConfirmDialog
 import com.android_explorer.ui.components.FileContextSheet
@@ -79,6 +80,7 @@ fun BrowserScreen(
     var showNewFolder by remember { mutableStateOf(false) }
     var showNewFile by remember { mutableStateOf(false) }
     var archiveAction by remember { mutableStateOf<FileItem?>(null) }
+    var previewItem by remember { mutableStateOf<FileItem?>(null) }
     var folderPickerFor by remember { mutableStateOf<FileItem?>(null) }
     var contextItem by remember { mutableStateOf<FileItem?>(null) }
     var renameItem by remember { mutableStateOf<FileItem?>(null) }
@@ -205,6 +207,7 @@ fun BrowserScreen(
             onCut = { viewModel.copyToClipboard(listOf(item), cut = true); contextItem = null },
             onRename = { renameItem = item; contextItem = null },
             onZip = { compressItems = listOf(item); contextItem = null },
+            onViewContents = if (item.isArchive) { { previewItem = item; contextItem = null } } else null,
             onExtract = if (item.isArchive) { { viewModel.extract(item); contextItem = null } } else null,
             onDelete = { deleteItems = listOf(item); contextItem = null },
             onSelect = { viewModel.toggleSelect(item); contextItem = null },
@@ -216,9 +219,17 @@ fun BrowserScreen(
         ArchiveActionDialog(
             name = item.name,
             onDismiss = { archiveAction = null },
+            onViewContents = { previewItem = item; archiveAction = null },
             onExtractHere = { viewModel.extract(item); archiveAction = null },
             onExtractTo = { folderPickerFor = item; archiveAction = null },
             onOpen = { FileOpener.open(context, item.file); archiveAction = null },
+        )
+    }
+    previewItem?.let { item ->
+        ArchiveContentsDialog(
+            item = item,
+            onDismiss = { previewItem = null },
+            onExtract = { viewModel.extract(item); previewItem = null },
         )
     }
     folderPickerFor?.let { item ->

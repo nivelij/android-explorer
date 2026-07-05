@@ -26,6 +26,10 @@ data class FileItem(
             "css", "js", "ts", "kt", "kts", "java", "py", "c", "cpp", "h", "hpp", "cs",
             "sh", "bash", "rb", "go", "rs", "php", "sql", "yaml", "yml", "toml", "ini",
             "cfg", "conf", "properties", "gradle", "gitignore", "env", "lua", "dart",
+            // RetroArch: overrides (.cfg), core options, input remaps, core info, cheats,
+            // shader presets/sources, and playlists (.lpl is JSON) — all plain text.
+            "opt", "rmp", "info", "cht", "lpl",
+            "glslp", "glsl", "slangp", "slang", "cgp", "cg",
         )
 
         fun from(file: File): FileItem = FileItem(

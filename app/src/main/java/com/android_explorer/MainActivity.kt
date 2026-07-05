@@ -76,9 +76,8 @@ private fun AppRoot() {
                 onEditFile = { editorFile = it },
             )
             else -> {
-                val state by homeViewModel.state.collectAsStateWithLifecycle()
                 HomeScreen(
-                    state = state,
+                    viewModel = homeViewModel,
                     onBrowse = { showBrowser = true },
                     onOpenFile = {
                         if (it.isEditableText) editorFile = it.file else FileOpener.open(context, it.file)

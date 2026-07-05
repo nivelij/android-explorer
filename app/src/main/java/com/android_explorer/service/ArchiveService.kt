@@ -132,12 +132,17 @@ class ArchiveService : Service() {
             )
         }
         ArchiveProgressBus.update(done)
-        if (result is ArchiveResult.PasswordRequired) {
-            // Interactive: keep the UI dialog, drop the ongoing notification.
-            stopForeground(STOP_FOREGROUND_REMOVE)
-        } else {
-            showTerminalNotification(done)
-            stopForeground(STOP_FOREGROUND_DETACH)
+        when (result) {
+            // Interactive: keep the in-app dialog, drop the ongoing notification.
+            is ArchiveResult.PasswordRequired -> stopForeground(STOP_FOREGROUND_REMOVE)
+            // Failures are worth surfacing even if the app is backgrounded.
+            is ArchiveResult.Failure -> {
+                stopForeground(STOP_FOREGROUND_REMOVE)
+                showTerminalNotification(done)
+            }
+            // Success / cancelled: the in-app UI already reflects the result — just clear the
+            // notification (no lingering "completed" message).
+            else -> stopForeground(STOP_FOREGROUND_REMOVE)
         }
         stopSelf()
     }
@@ -177,6 +182,9 @@ class ArchiveService : Service() {
             .setOngoing(true)
             .setProgress(100, percent, p.indeterminate)
             .addAction(0, "Cancel", cancelIntent())
+            // Show the progress notification right away — Android 12+ otherwise defers foreground
+            // service notifications up to 10s, so shorter jobs would finish before it ever appeared.
+            .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
             .build()
     }
 
@@ -206,7 +214,7 @@ class ArchiveService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_archive)
+            .setSmallIcon(R.drawable.ic_notification)
             .setContentIntent(open)
             .setOnlyAlertOnce(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)

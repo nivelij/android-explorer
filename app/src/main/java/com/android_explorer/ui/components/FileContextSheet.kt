@@ -1,14 +1,15 @@
 package com.android_explorer.ui.components
 
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Archive
 import androidx.compose.material.icons.rounded.Checklist
@@ -19,13 +20,13 @@ import androidx.compose.material.icons.rounded.DriveFileRenameOutline
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.Unarchive
-import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material.icons.rounded.Visibility
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -34,8 +35,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.android_explorer.data.FileItem
 
-/** Long-press context menu for a single file/folder, shown as a Material bottom sheet. */
-@OptIn(ExperimentalMaterial3Api::class)
+/** Long-press context menu for a single file/folder, shown as a centered pop-up dialog. */
 @Composable
 fun FileContextSheet(
     item: FileItem,
@@ -45,53 +45,91 @@ fun FileContextSheet(
     onCut: () -> Unit,
     onRename: () -> Unit,
     onZip: () -> Unit,
+    onViewContents: (() -> Unit)? = null,
     onExtract: (() -> Unit)?,
     onDelete: () -> Unit,
     onSelect: () -> Unit,
     onDetails: () -> Unit,
 ) {
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState()) {
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .padding(bottom = 16.dp),
-        ) {
-            // Header
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(
-                    imageVector = iconFor(item),
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(28.dp),
-                )
-                Spacer(Modifier.size(16.dp))
-                Text(
-                    text = item.name,
-                    style = MaterialTheme.typography.titleMedium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            HorizontalDivider(Modifier.padding(vertical = 4.dp))
-
-            Action(Icons.Rounded.OpenInNew, "Open") { onOpen() }
-            Action(Icons.Rounded.ContentCopy, "Copy") { onCopy() }
-            Action(Icons.Rounded.ContentCut, "Cut") { onCut() }
-            Action(Icons.Rounded.DriveFileRenameOutline, "Rename") { onRename() }
-            Action(Icons.Rounded.Archive, "Compress (Zip)") { onZip() }
-            if (onExtract != null) {
-                Action(Icons.Rounded.Unarchive, "Extract here") { onExtract() }
-            }
-            Action(Icons.Rounded.Checklist, "Select") { onSelect() }
-            Action(Icons.Rounded.Info, "Details") { onDetails() }
-            HorizontalDivider(Modifier.padding(vertical = 4.dp))
-            Action(Icons.Rounded.Delete, "Delete", destructive = true) { onDelete() }
+    ContextPopup(item, onDismiss) {
+        Action(Icons.Rounded.OpenInNew, "Open") { onOpen() }
+        Action(Icons.Rounded.ContentCopy, "Copy") { onCopy() }
+        Action(Icons.Rounded.ContentCut, "Cut") { onCut() }
+        Action(Icons.Rounded.DriveFileRenameOutline, "Rename") { onRename() }
+        Action(Icons.Rounded.Archive, "Compress (Zip)") { onZip() }
+        if (onViewContents != null) {
+            Action(Icons.Rounded.Visibility, "View contents") { onViewContents() }
         }
+        if (onExtract != null) {
+            Action(Icons.Rounded.Unarchive, "Extract here") { onExtract() }
+        }
+        Action(Icons.Rounded.Checklist, "Select") { onSelect() }
+        Action(Icons.Rounded.Info, "Details") { onDetails() }
+        HorizontalDivider(Modifier.padding(vertical = 4.dp))
+        Action(Icons.Rounded.Delete, "Delete", destructive = true) { onDelete() }
     }
+}
+
+/**
+ * Slimmer long-press menu for the home screen's Recents list. Recents are a flat set of files with
+ * no browsing/paste context, so this offers only the actions that stand alone: open, archive
+ * preview/extract, details, delete.
+ */
+@Composable
+fun RecentsContextSheet(
+    item: FileItem,
+    onDismiss: () -> Unit,
+    onOpen: () -> Unit,
+    onViewContents: (() -> Unit)?,
+    onExtract: (() -> Unit)?,
+    onDetails: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    ContextPopup(item, onDismiss) {
+        Action(Icons.Rounded.OpenInNew, "Open") { onOpen() }
+        if (onViewContents != null) {
+            Action(Icons.Rounded.Visibility, "View contents") { onViewContents() }
+        }
+        if (onExtract != null) {
+            Action(Icons.Rounded.Unarchive, "Extract here") { onExtract() }
+        }
+        Action(Icons.Rounded.Info, "Details") { onDetails() }
+        HorizontalDivider(Modifier.padding(vertical = 4.dp))
+        Action(Icons.Rounded.Delete, "Delete", destructive = true) { onDelete() }
+    }
+}
+
+/** Shared centered pop-up: a coloured type icon + file name header over a scrollable action list. */
+@Composable
+private fun ContextPopup(
+    item: FileItem,
+    onDismiss: () -> Unit,
+    actions: @Composable ColumnScope.() -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = {
+            Icon(
+                imageVector = iconFor(item),
+                contentDescription = null,
+                tint = colorFor(item),
+                modifier = Modifier.size(30.dp),
+            )
+        },
+        title = {
+            Text(
+                text = item.name,
+                style = MaterialTheme.typography.titleMedium,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        },
+        text = {
+            Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) { actions() }
+        },
+        confirmButton = {},
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Close") } },
+    )
 }
 
 @Composable
@@ -107,11 +145,11 @@ private fun Action(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(horizontal = 24.dp, vertical = 14.dp),
+            .padding(horizontal = 8.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(icon, contentDescription = null, tint = tint)
-        Spacer(Modifier.size(24.dp))
+        Spacer(Modifier.size(20.dp))
         Text(label, style = MaterialTheme.typography.bodyLarge, color = textColor)
     }
 }

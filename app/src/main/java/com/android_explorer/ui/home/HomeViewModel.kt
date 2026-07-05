@@ -3,10 +3,13 @@ package com.android_explorer.ui.home
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.android_explorer.data.FileDetails
 import com.android_explorer.data.FileItem
+import com.android_explorer.data.FileRepository
 import com.android_explorer.data.RecentFilesRepository
 import com.android_explorer.data.StorageRepository
 import com.android_explorer.data.VolumeStat
+import com.android_explorer.service.ArchiveService
 import com.android_explorer.util.Permissions
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -26,9 +29,13 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
 
     private val storageRepo = StorageRepository(app)
     private val recentsRepo = RecentFilesRepository(app)
+    private val fileRepo = FileRepository()
 
     private val _state = MutableStateFlow(HomeUiState())
     val state: StateFlow<HomeUiState> = _state.asStateFlow()
+
+    private val _details = MutableStateFlow<FileDetails?>(null)
+    val details: StateFlow<FileDetails?> = _details.asStateFlow()
 
     fun refresh() {
         viewModelScope.launch {
@@ -43,5 +50,27 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
                 recents = recents,
             )
         }
+    }
+
+    fun showDetails(item: FileItem) {
+        viewModelScope.launch {
+            _details.value = withContext(Dispatchers.IO) { fileRepo.details(item) }
+        }
+    }
+
+    fun dismissDetails() {
+        _details.value = null
+    }
+
+    fun delete(item: FileItem) {
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { fileRepo.delete(listOf(item)) }
+            refresh()
+        }
+    }
+
+    fun extract(item: FileItem) {
+        val dest = fileRepo.extractionTargetFor(item.file)
+        ArchiveService.extract(getApplication(), item.path, dest.absolutePath)
     }
 }

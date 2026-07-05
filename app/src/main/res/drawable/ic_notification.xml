@@ -1,0 +1,12 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24"
+    android:tint="#FFFFFFFF">
+    <!-- Folder silhouette matching the app icon's monochrome layer. Status-bar icons are rendered
+         as an alpha mask (colour is ignored / system-tinted), so this is a solid white glyph. -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M3,7 a1.5,1.5 0 0 1 1.5,-1.5 h4.5 l2,2 h8.5 a1.5,1.5 0 0 1 1.5,1.5 v8.5 a1.5,1.5 0 0 1 -1.5,1.5 h-15 a1.5,1.5 0 0 1 -1.5,-1.5 z" />
+</vector>

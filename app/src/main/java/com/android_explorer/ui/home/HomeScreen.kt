@@ -27,26 +27,41 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.android_explorer.R
 import com.android_explorer.data.FileItem
 import com.android_explorer.data.VolumeStat
+import com.android_explorer.ui.components.ArchiveContentsDialog
+import com.android_explorer.ui.components.ConfirmDialog
+import com.android_explorer.ui.components.FileDetailsDialog
 import com.android_explorer.ui.components.FileListItem
+import com.android_explorer.ui.components.RecentsContextSheet
 import com.android_explorer.ui.components.StorageMeter
 import com.android_explorer.ui.components.ThemeOverflowMenu
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
-    state: HomeUiState,
+    viewModel: HomeViewModel,
     onBrowse: () -> Unit,
     onOpenFile: (FileItem) -> Unit,
     onRequestAccess: () -> Unit,
 ) {
+    val state by viewModel.state.collectAsStateWithLifecycle()
+    val details by viewModel.details.collectAsStateWithLifecycle()
+    var contextItem by remember { mutableStateOf<FileItem?>(null) }
+    var previewItem by remember { mutableStateOf<FileItem?>(null) }
+    var deleteItem by remember { mutableStateOf<FileItem?>(null) }
+
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
@@ -68,20 +83,55 @@ fun HomeScreen(
 
         BoxWithConstraints(Modifier.padding(padding).fillMaxSize()) {
             val landscape = maxWidth > maxHeight
+            // Tap: archives open the contents preview (they have no default "open" app);
+            // everything else defers to the host (editor for text, otherwise "open with").
+            val onOpenRecent: (FileItem) -> Unit = { if (it.isArchive) previewItem = it else onOpenFile(it) }
             if (landscape) {
                 Row(Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 8.dp)) {
                     StoragePane(state.volumes, onBrowse, Modifier.weight(0.42f).fillMaxSize())
                     Spacer(Modifier.size(20.dp))
-                    RecentsPane(state.recents, onOpenFile, Modifier.weight(0.58f).fillMaxSize())
+                    RecentsPane(state.recents, onOpenRecent, { contextItem = it }, Modifier.weight(0.58f).fillMaxSize())
                 }
             } else {
                 Column(Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
                     StoragePane(state.volumes, onBrowse, Modifier.fillMaxWidth())
                     Spacer(Modifier.size(20.dp))
-                    RecentsPane(state.recents, onOpenFile, Modifier.weight(1f).fillMaxWidth())
+                    RecentsPane(state.recents, onOpenRecent, { contextItem = it }, Modifier.weight(1f).fillMaxWidth())
                 }
             }
         }
+    }
+
+    contextItem?.let { item ->
+        RecentsContextSheet(
+            item = item,
+            onDismiss = { contextItem = null },
+            onOpen = {
+                if (item.isArchive) previewItem = item else onOpenFile(item)
+                contextItem = null
+            },
+            onViewContents = if (item.isArchive) { { previewItem = item; contextItem = null } } else null,
+            onExtract = if (item.isArchive) { { viewModel.extract(item); contextItem = null } } else null,
+            onDetails = { viewModel.showDetails(item); contextItem = null },
+            onDelete = { deleteItem = item; contextItem = null },
+        )
+    }
+    previewItem?.let { item ->
+        ArchiveContentsDialog(
+            item = item,
+            onDismiss = { previewItem = null },
+            onExtract = { viewModel.extract(item); previewItem = null },
+        )
+    }
+    details?.let { FileDetailsDialog(details = it, onDismiss = viewModel::dismissDetails) }
+    deleteItem?.let { item ->
+        ConfirmDialog(
+            title = "Delete ${item.name}?",
+            message = "This cannot be undone.",
+            confirmLabel = "Delete",
+            onDismiss = { deleteItem = null },
+            onConfirm = { viewModel.delete(item); deleteItem = null },
+        )
     }
 }
 
@@ -114,7 +164,12 @@ private fun StoragePane(volumes: List<VolumeStat>, onBrowse: () -> Unit, modifie
 }
 
 @Composable
-private fun RecentsPane(recents: List<FileItem>, onOpenFile: (FileItem) -> Unit, modifier: Modifier) {
+private fun RecentsPane(
+    recents: List<FileItem>,
+    onOpen: (FileItem) -> Unit,
+    onLongClick: (FileItem) -> Unit,
+    modifier: Modifier,
+) {
     Column(modifier) {
         SectionHeader("Recent files")
         Spacer(Modifier.size(8.dp))
@@ -132,8 +187,8 @@ private fun RecentsPane(recents: List<FileItem>, onOpenFile: (FileItem) -> Unit,
                         item = item,
                         selected = false,
                         folderSize = null,
-                        onClick = { onOpenFile(item) },
-                        onLongClick = {},
+                        onClick = { onOpen(item) },
+                        onLongClick = { onLongClick(item) },
                     )
                 }
             }
