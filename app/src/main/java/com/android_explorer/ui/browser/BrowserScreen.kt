@@ -23,6 +23,8 @@ import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.NoteAdd
 import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.ArrowDownward
+import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.Sort
 import androidx.compose.material.icons.rounded.GridView
 import androidx.compose.material.icons.rounded.Unarchive
@@ -128,6 +130,8 @@ fun BrowserScreen(
                 BrowserBar(
                     title = if (viewModel.canGoUp) state.dir.name else "Internal storage",
                     grid = state.view == ViewMode.GRID,
+                    sortBy = state.sortBy,
+                    ascending = state.ascending,
                     showPaste = state.hasClipboard,
                     onPaste = viewModel::paste,
                     onUp = { if (!viewModel.navigateUp()) onExit() },
@@ -316,6 +320,8 @@ private fun FileListing(
 private fun BrowserBar(
     title: String,
     grid: Boolean,
+    sortBy: SortBy,
+    ascending: Boolean,
     showPaste: Boolean,
     onPaste: () -> Unit,
     onUp: () -> Unit,
@@ -357,6 +363,14 @@ private fun BrowserBar(
                 SortBy.entries.forEach { s ->
                     DropdownMenuItem(
                         text = { Text("By ${s.name.lowercase().replaceFirstChar { it.uppercase() }}") },
+                        trailingIcon = if (s == sortBy) {
+                            {
+                                Icon(
+                                    if (ascending) Icons.Rounded.ArrowUpward else Icons.Rounded.ArrowDownward,
+                                    contentDescription = if (ascending) "Ascending" else "Descending",
+                                )
+                            }
+                        } else null,
                         onClick = { onSort(s); sortMenu = false },
                     )
                 }

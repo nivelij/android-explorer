@@ -1,11 +1,13 @@
 package com.android_explorer.ui.components
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -23,19 +25,23 @@ import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.Unarchive
 import androidx.compose.material.icons.rounded.Visibility
 import androidx.compose.material.icons.rounded.Wallpaper
-import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.AlertDialogDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import com.android_explorer.data.FileItem
 
 /** Long-press context menu for a single file/folder, shown as a centered pop-up dialog. */
@@ -118,47 +124,73 @@ fun RecentsContextSheet(
     }
 }
 
-/** Shared centered pop-up: a coloured type icon + file name header over a scrollable action list. */
+/**
+ * Shared centered pop-up: a coloured type icon + file name header over a scrollable action list.
+ *
+ * Built on a plain [Dialog] rather than `AlertDialog`: AlertDialog's `text` slot is tightly
+ * height-constrained, so a long action list would show only a few rows and force scrolling. Here the
+ * list is free to grow up to ~55% of the screen height before it starts scrolling.
+ */
 @Composable
 private fun ContextPopup(
     item: FileItem,
     onDismiss: () -> Unit,
     actions: @Composable ColumnScope.() -> Unit,
 ) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        icon = {
-            val specialRes = specialFolderIconRes(item)
-            if (specialRes != null) {
-                Icon(
-                    painter = painterResource(specialRes),
-                    contentDescription = null,
-                    tint = colorFor(item),
-                    modifier = Modifier.size(30.dp),
-                )
-            } else {
-                Icon(
-                    imageVector = iconFor(item),
-                    contentDescription = null,
-                    tint = colorFor(item),
-                    modifier = Modifier.size(30.dp),
-                )
+    val maxListHeight = (LocalConfiguration.current.screenHeightDp * 0.62f).dp
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = MaterialTheme.shapes.extraLarge,
+            color = AlertDialogDefaults.containerColor,
+            tonalElevation = AlertDialogDefaults.TonalElevation,
+        ) {
+            Column(Modifier.padding(vertical = 20.dp)) {
+                Column(
+                    Modifier.fillMaxWidth().padding(horizontal = 24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    val specialRes = specialFolderIconRes(item)
+                    if (specialRes != null) {
+                        Icon(
+                            painter = painterResource(specialRes),
+                            contentDescription = null,
+                            tint = colorFor(item),
+                            modifier = Modifier.size(30.dp),
+                        )
+                    } else {
+                        Icon(
+                            imageVector = iconFor(item),
+                            contentDescription = null,
+                            tint = colorFor(item),
+                            modifier = Modifier.size(30.dp),
+                        )
+                    }
+                    Spacer(Modifier.size(12.dp))
+                    Text(
+                        text = item.name,
+                        style = MaterialTheme.typography.titleMedium,
+                        textAlign = TextAlign.Center,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                Spacer(Modifier.size(16.dp))
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = maxListHeight)
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 12.dp),
+                ) { actions() }
+                Row(
+                    Modifier.fillMaxWidth().padding(top = 8.dp, end = 16.dp),
+                    horizontalArrangement = Arrangement.End,
+                ) {
+                    TextButton(onClick = onDismiss) { Text("Close") }
+                }
             }
-        },
-        title = {
-            Text(
-                text = item.name,
-                style = MaterialTheme.typography.titleMedium,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-        },
-        text = {
-            Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) { actions() }
-        },
-        confirmButton = {},
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Close") } },
-    )
+        }
+    }
 }
 
 @Composable
@@ -174,7 +206,7 @@ private fun Action(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(horizontal = 8.dp, vertical = 14.dp),
+            .padding(horizontal = 8.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(icon, contentDescription = null, tint = tint)

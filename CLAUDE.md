@@ -72,7 +72,9 @@ the code looks right. Every change:
 - **Icons.** `material-icons-extended`, `Icons.Rounded.*`. Central file-type icon + accent-color
   mapping is `ui/components/FileIcons.kt` (`FileKind` enum, `kindOf`/`iconFor`/`colorFor`). Per-folder
   drawable overrides go through `specialFolderIconRes` (e.g. Download → `ic_folder_download`).
-- **Context menus** are centered pop-ups (`AlertDialog`-based) in `ui/components/FileContextSheet.kt`:
+- **Context menus** are centered pop-ups (a plain `Dialog` + `Surface`, styled with `AlertDialogDefaults`
+  — *not* `AlertDialog`, whose height-constrained `text` slot cramped long action lists; here the action
+  column grows to ~62% of screen height before scrolling) in `ui/components/FileContextSheet.kt`:
   `FileContextSheet` (browser) and `RecentsContextSheet` (flat lists: home / category / search).
   Actions are optional lambdas rendered conditionally — e.g. `onShare` only for non-folders,
   `onSetWallpaper` only for images.
