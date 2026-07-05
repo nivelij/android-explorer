@@ -9,8 +9,8 @@
     <group
         android:pivotX="54"
         android:pivotY="60"
-        android:scaleX="0.6"
-        android:scaleY="0.6"
+        android:scaleX="0.54"
+        android:scaleY="0.54"
         android:translateX="2"
         android:translateY="-2.5">
         <path
@@ -22,8 +22,8 @@
     <group
         android:pivotX="54"
         android:pivotY="60"
-        android:scaleX="0.6"
-        android:scaleY="0.6"
+        android:scaleX="0.54"
+        android:scaleY="0.54"
         android:translateY="-6">
         <!-- Folder back + tab (lighter yellow) -->
         <path
