@@ -1,5 +1,7 @@
 package com.android_explorer.ui.home
 
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -13,10 +15,16 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material.icons.rounded.FolderOpen
+import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.Movie
+import androidx.compose.material.icons.rounded.MusicNote
+import androidx.compose.material.icons.rounded.PhotoCamera
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -25,6 +33,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -33,6 +42,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -53,6 +64,7 @@ import com.android_explorer.ui.components.ThemeOverflowMenu
 fun HomeScreen(
     viewModel: HomeViewModel,
     onBrowse: () -> Unit,
+    onOpenFolder: (java.io.File) -> Unit,
     onOpenFile: (FileItem) -> Unit,
     onRequestAccess: () -> Unit,
 ) {
@@ -88,13 +100,13 @@ fun HomeScreen(
             val onOpenRecent: (FileItem) -> Unit = { if (it.isArchive) previewItem = it else onOpenFile(it) }
             if (landscape) {
                 Row(Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 8.dp)) {
-                    StoragePane(state.volumes, onBrowse, Modifier.weight(0.42f).fillMaxSize())
+                    StoragePane(state.volumes, onBrowse, onOpenFolder, Modifier.weight(0.42f).fillMaxSize())
                     Spacer(Modifier.size(20.dp))
                     RecentsPane(state.recents, onOpenRecent, { contextItem = it }, Modifier.weight(0.58f).fillMaxSize())
                 }
             } else {
                 Column(Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
-                    StoragePane(state.volumes, onBrowse, Modifier.fillMaxWidth())
+                    StoragePane(state.volumes, onBrowse, onOpenFolder, Modifier.fillMaxWidth())
                     Spacer(Modifier.size(20.dp))
                     RecentsPane(state.recents, onOpenRecent, { contextItem = it }, Modifier.weight(1f).fillMaxWidth())
                 }
@@ -136,7 +148,12 @@ fun HomeScreen(
 }
 
 @Composable
-private fun StoragePane(volumes: List<VolumeStat>, onBrowse: () -> Unit, modifier: Modifier) {
+private fun StoragePane(
+    volumes: List<VolumeStat>,
+    onBrowse: () -> Unit,
+    onOpenFolder: (java.io.File) -> Unit,
+    modifier: Modifier,
+) {
     Column(modifier) {
         SectionHeader("Storage")
         Spacer(Modifier.size(12.dp))
@@ -159,6 +176,55 @@ private fun StoragePane(volumes: List<VolumeStat>, onBrowse: () -> Unit, modifie
             Icon(Icons.Rounded.FolderOpen, contentDescription = null)
             Spacer(Modifier.size(8.dp))
             Text("Browse files")
+        }
+        ShortcutsRow(onOpenFolder)
+    }
+}
+
+/** Horizontal quick-access chips for common public folders (only those that exist). */
+@Composable
+private fun ShortcutsRow(onOpenFolder: (java.io.File) -> Unit) {
+    val shortcuts = remember { defaultShortcuts() }
+    if (shortcuts.isEmpty()) return
+    Spacer(Modifier.size(20.dp))
+    SectionHeader("Shortcuts")
+    Spacer(Modifier.size(10.dp))
+    Row(
+        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        shortcuts.forEach { ShortcutChip(it, onOpenFolder) }
+    }
+}
+
+@Composable
+private fun ShortcutChip(shortcut: FolderShortcut, onOpenFolder: (java.io.File) -> Unit) {
+    val accent = shortcut.color
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = accent.copy(alpha = 0.12f),
+        modifier = Modifier.clip(RoundedCornerShape(14.dp)).clickable { onOpenFolder(shortcut.dir) },
+    ) {
+        Row(
+            Modifier.padding(horizontal = 14.dp, vertical = 11.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (shortcut.iconRes != null) {
+                Icon(
+                    painter = painterResource(shortcut.iconRes),
+                    contentDescription = null,
+                    tint = accent,
+                    modifier = Modifier.size(22.dp),
+                )
+            } else {
+                Icon(shortcut.icon!!, contentDescription = null, tint = accent, modifier = Modifier.size(22.dp))
+            }
+            Spacer(Modifier.size(10.dp))
+            Text(
+                shortcut.label,
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
         }
     }
 }
@@ -194,6 +260,28 @@ private fun RecentsPane(
             }
         }
     }
+}
+
+private data class FolderShortcut(
+    val label: String,
+    val dir: java.io.File,
+    val color: androidx.compose.ui.graphics.Color,
+    val icon: androidx.compose.ui.graphics.vector.ImageVector? = null,
+    val iconRes: Int? = null,
+)
+
+/** Standard public folders, in a sensible order; only the ones that actually exist are shown. */
+private fun defaultShortcuts(): List<FolderShortcut> {
+    val root = android.os.Environment.getExternalStorageDirectory()
+    fun f(name: String) = java.io.File(root, name)
+    return listOf(
+        FolderShortcut("Download", f("Download"), androidx.compose.ui.graphics.Color(0xFFFFCA28), iconRes = R.drawable.ic_folder_download),
+        FolderShortcut("Documents", f("Documents"), androidx.compose.ui.graphics.Color(0xFF42A5F5), icon = Icons.Rounded.Description),
+        FolderShortcut("DCIM", f("DCIM"), androidx.compose.ui.graphics.Color(0xFFEC407A), icon = Icons.Rounded.PhotoCamera),
+        FolderShortcut("Pictures", f("Pictures"), androidx.compose.ui.graphics.Color(0xFF66BB6A), icon = Icons.Rounded.Image),
+        FolderShortcut("Movies", f("Movies"), androidx.compose.ui.graphics.Color(0xFFAB47BC), icon = Icons.Rounded.Movie),
+        FolderShortcut("Music", f("Music"), androidx.compose.ui.graphics.Color(0xFFFF7043), icon = Icons.Rounded.MusicNote),
+    ).filter { it.dir.isDirectory }
 }
 
 @Composable

@@ -1,0 +1,12 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- Folder with a down-arrow cut out of it (evenOdd), for the Downloads shortcut.
+         Single-colour so it tints cleanly like the other shortcut glyphs. -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M3,7 a1.5,1.5 0 0 1 1.5,-1.5 h4.5 l2,2 h8.5 a1.5,1.5 0 0 1 1.5,1.5 v8.5 a1.5,1.5 0 0 1 -1.5,1.5 h-15 a1.5,1.5 0 0 1 -1.5,-1.5 z M11,10 h2 v3 h2 l-3,3 l-3,-3 h2 z" />
+</vector>

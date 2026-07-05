@@ -70,8 +70,14 @@ import com.android_explorer.util.FileOpener
 fun BrowserScreen(
     onExit: () -> Unit,
     onEditFile: (java.io.File) -> Unit,
+    startDir: java.io.File? = null,
     viewModel: BrowserViewModel = viewModel(),
 ) {
+    // Open at the requested folder (e.g. a home-screen shortcut). Runs once on entry; the
+    // ViewModel is retained across sessions, so this also resets it when re-entering via Browse.
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        viewModel.navigateTo(startDir ?: viewModel.storageRoot)
+    }
     val state by viewModel.state.collectAsStateWithLifecycle()
     val progress by ArchiveProgressBus.progress.collectAsStateWithLifecycle()
     val details by viewModel.details.collectAsStateWithLifecycle()

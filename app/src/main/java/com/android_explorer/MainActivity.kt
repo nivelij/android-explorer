@@ -50,7 +50,10 @@ class MainActivity : ComponentActivity() {
 private fun AppRoot() {
     val context = LocalContext.current
     val homeViewModel: HomeViewModel = viewModel()
-    var showBrowser by rememberSaveable { mutableStateOf(false) }
+    // Non-null while browsing; holds the folder to open (storage root for "Browse files",
+    // or a specific folder for a home-screen shortcut). rememberSaveable survives process death.
+    var browsePath by rememberSaveable { mutableStateOf<String?>(null) }
+    val rootPath = remember { android.os.Environment.getExternalStorageDirectory().absolutePath }
     // Activity uses configChanges (no recreation on rotation), so remember survives rotation.
     var editorFile by remember { mutableStateOf<File?>(null) }
 
@@ -69,16 +72,19 @@ private fun AppRoot() {
 
     Box(Modifier.fillMaxSize()) {
         val editing = editorFile
+        val browsing = browsePath
         when {
             editing != null -> EditorScreen(file = editing, onClose = { editorFile = null })
-            showBrowser -> BrowserScreen(
-                onExit = { showBrowser = false },
+            browsing != null -> BrowserScreen(
+                onExit = { browsePath = null },
                 onEditFile = { editorFile = it },
+                startDir = File(browsing),
             )
             else -> {
                 HomeScreen(
                     viewModel = homeViewModel,
-                    onBrowse = { showBrowser = true },
+                    onBrowse = { browsePath = rootPath },
+                    onOpenFolder = { browsePath = it.absolutePath },
                     onOpenFile = {
                         if (it.isEditableText) editorFile = it.file else FileOpener.open(context, it.file)
                     },
