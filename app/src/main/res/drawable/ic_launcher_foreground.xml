@@ -3,25 +3,47 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- Full-bleed folder so it fills the icon mask. Background color matches the folder front. -->
-    <!-- Folder back + tab (lighter yellow) -->
-    <path
-        android:fillColor="#FFE082"
-        android:pathData="M0,24 a8,8 0 0 1 8,-8 h32 l10,10 h50 a8,8 0 0 1 8,8 v16 h-108 z" />
-    <!-- Green accent on the tab -->
-    <path
-        android:fillColor="#7CB342"
-        android:pathData="M16,19 h13 v9 h-13 z" />
-    <!-- White line on the tab -->
-    <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M33,20 h20 a2.5,2.5 0 0 1 0,5 h-20 a2.5,2.5 0 0 1 0,-5 z" />
-    <!-- Folder front (main yellow) -->
-    <path
-        android:fillColor="#FFD24D"
-        android:pathData="M0,40 h108 v56 a8,8 0 0 1 -8,8 h-92 a8,8 0 0 1 -8,-8 z" />
-    <!-- Blue arch (Windows-Explorer style) -->
-    <path
-        android:fillColor="#29B6F6"
-        android:pathData="M38,66 a8,8 0 0 1 8,-8 h16 a8,8 0 0 1 8,8 v32 h-12 v-18 h-8 v18 h-12 z" />
+    <!-- Files-style: a centered folder (~60% of the tile) on the solid circular background. -->
+
+    <!-- Soft drop shadow, offset slightly down/right. -->
+    <group
+        android:pivotX="54"
+        android:pivotY="60"
+        android:scaleX="0.6"
+        android:scaleY="0.6"
+        android:translateX="2"
+        android:translateY="-2.5">
+        <path
+            android:fillColor="#33000000"
+            android:pathData="M0,24 a8,8 0 0 1 8,-8 h32 l10,10 h50 a8,8 0 0 1 8,8 v62 a8,8 0 0 1 -8,8 h-92 a8,8 0 0 1 -8,-8 z" />
+    </group>
+
+    <!-- Centered folder -->
+    <group
+        android:pivotX="54"
+        android:pivotY="60"
+        android:scaleX="0.6"
+        android:scaleY="0.6"
+        android:translateY="-6">
+        <!-- Folder back + tab (lighter yellow) -->
+        <path
+            android:fillColor="#FFE082"
+            android:pathData="M0,24 a8,8 0 0 1 8,-8 h32 l10,10 h50 a8,8 0 0 1 8,8 v16 h-108 z" />
+        <!-- Green accent on the tab -->
+        <path
+            android:fillColor="#7CB342"
+            android:pathData="M16,19 h13 v9 h-13 z" />
+        <!-- White line on the tab -->
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M33,20 h20 a2.5,2.5 0 0 1 0,5 h-20 a2.5,2.5 0 0 1 0,-5 z" />
+        <!-- Folder front (main yellow) -->
+        <path
+            android:fillColor="#FFD24D"
+            android:pathData="M0,40 h108 v56 a8,8 0 0 1 -8,8 h-92 a8,8 0 0 1 -8,-8 z" />
+        <!-- Blue arch (Windows-Explorer style) -->
+        <path
+            android:fillColor="#29B6F6"
+            android:pathData="M38,66 a8,8 0 0 1 8,-8 h16 a8,8 0 0 1 8,8 v32 h-12 v-18 h-8 v18 h-12 z" />
+    </group>
 </vector>
