@@ -24,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
@@ -174,6 +175,7 @@ private fun Thumbnail(item: FileItem, size: androidx.compose.ui.unit.Dp) {
 @Composable
 private fun IconTile(item: FileItem, selected: Boolean, size: androidx.compose.ui.unit.Dp) {
     val accent = colorFor(item)
+    val specialRes = specialFolderIconRes(item)
     Surface(
         shape = RoundedCornerShape(12.dp),
         // Selected → solid primary chip; otherwise a soft chip tinted with the type's accent colour.
@@ -181,12 +183,20 @@ private fun IconTile(item: FileItem, selected: Boolean, size: androidx.compose.u
         modifier = Modifier.size(size),
     ) {
         Box(contentAlignment = Alignment.Center) {
-            Icon(
-                imageVector = if (selected) Icons.Rounded.CheckCircle else iconFor(item),
-                contentDescription = null,
-                tint = if (selected) MaterialTheme.colorScheme.onPrimary else accent,
-                modifier = Modifier.size(size * 0.55f),
-            )
+            val glyphSize = Modifier.size(size * 0.55f)
+            when {
+                selected -> Icon(
+                    Icons.Rounded.CheckCircle, contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onPrimary, modifier = glyphSize,
+                )
+                specialRes != null -> Icon(
+                    painter = painterResource(specialRes), contentDescription = null,
+                    tint = accent, modifier = glyphSize,
+                )
+                else -> Icon(
+                    iconFor(item), contentDescription = null, tint = accent, modifier = glyphSize,
+                )
+            }
         }
     }
 }

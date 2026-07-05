@@ -31,6 +31,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.android_explorer.data.FileItem
@@ -109,12 +110,22 @@ private fun ContextPopup(
     AlertDialog(
         onDismissRequest = onDismiss,
         icon = {
-            Icon(
-                imageVector = iconFor(item),
-                contentDescription = null,
-                tint = colorFor(item),
-                modifier = Modifier.size(30.dp),
-            )
+            val specialRes = specialFolderIconRes(item)
+            if (specialRes != null) {
+                Icon(
+                    painter = painterResource(specialRes),
+                    contentDescription = null,
+                    tint = colorFor(item),
+                    modifier = Modifier.size(30.dp),
+                )
+            } else {
+                Icon(
+                    imageVector = iconFor(item),
+                    contentDescription = null,
+                    tint = colorFor(item),
+                    modifier = Modifier.size(30.dp),
+                )
+            }
         },
         title = {
             Text(

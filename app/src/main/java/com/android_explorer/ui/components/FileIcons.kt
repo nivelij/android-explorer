@@ -76,3 +76,18 @@ fun iconFor(item: FileItem): ImageVector = kindOf(item).icon
 
 /** The accent colour for a file's kind (glyph tint / soft chip background). */
 fun colorFor(item: FileItem): Color = kindOf(item).color
+
+/**
+ * A drawable override for well-known top-level public folders (e.g. Download → folder-with-arrow),
+ * or null to use the plain [iconFor] glyph. Matched at the storage root only so an arbitrary nested
+ * folder named "Download" stays a normal folder.
+ */
+fun specialFolderIconRes(item: FileItem): Int? {
+    if (!item.isDirectory) return null
+    val root = android.os.Environment.getExternalStorageDirectory().absolutePath
+    if (item.file.parent != root) return null
+    return when (item.name) {
+        "Download" -> com.android_explorer.R.drawable.ic_folder_download
+        else -> null
+    }
+}
