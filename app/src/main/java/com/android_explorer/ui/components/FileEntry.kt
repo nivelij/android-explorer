@@ -105,6 +105,9 @@ fun FileDetailsItem(
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     modifier: Modifier = Modifier,
+    // When set (e.g. a device-wide category list), replaces the default size/date subtitle —
+    // used to show the file's containing folder so a flat aggregation stays locatable.
+    subtitleOverride: String? = null,
 ) {
     val bg = if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent
     Row(
@@ -132,7 +135,7 @@ fun FileDetailsItem(
             )
             Spacer(Modifier.size(3.dp))
             Text(
-                text = subtitle(item, folderSize),
+                text = subtitleOverride ?: subtitle(item, folderSize),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,

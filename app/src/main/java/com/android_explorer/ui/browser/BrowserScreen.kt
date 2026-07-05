@@ -69,7 +69,7 @@ import com.android_explorer.util.FileOpener
 @Composable
 fun BrowserScreen(
     onExit: () -> Unit,
-    onEditFile: (java.io.File) -> Unit,
+    onOpenFile: (FileItem) -> Unit,
     startDir: java.io.File? = null,
     viewModel: BrowserViewModel = viewModel(),
 ) {
@@ -144,7 +144,7 @@ fun BrowserScreen(
                 )
                 else -> FileListing(
                     state = state,
-                    onClick = { item -> onItemClick(item, state, viewModel, context, onEditFile) { archiveAction = it } },
+                    onClick = { item -> onItemClick(item, state, viewModel, onOpenFile) { archiveAction = it } },
                     onLongClick = { item ->
                         if (state.inSelectionMode) viewModel.toggleSelect(item) else contextItem = item
                     },
@@ -202,11 +202,7 @@ fun BrowserScreen(
             item = item,
             onDismiss = { contextItem = null },
             onOpen = {
-                when {
-                    item.isDirectory -> viewModel.open(item)
-                    item.isEditableText -> onEditFile(item.file)
-                    else -> FileOpener.open(context, item.file)
-                }
+                if (item.isDirectory) viewModel.open(item) else onOpenFile(item)
                 contextItem = null
             },
             onCopy = { viewModel.copyToClipboard(listOf(item), cut = false); contextItem = null },
@@ -253,16 +249,14 @@ private fun onItemClick(
     item: FileItem,
     state: BrowserUiState,
     viewModel: BrowserViewModel,
-    context: android.content.Context,
-    onEditFile: (java.io.File) -> Unit,
+    onOpenFile: (FileItem) -> Unit,
     onArchive: (FileItem) -> Unit,
 ) {
     when {
         state.inSelectionMode -> viewModel.toggleSelect(item)
         item.isDirectory -> viewModel.open(item)
         item.isArchive -> onArchive(item)
-        item.isEditableText -> onEditFile(item.file)
-        else -> FileOpener.open(context, item.file)
+        else -> onOpenFile(item)
     }
 }
 

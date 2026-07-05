@@ -22,14 +22,19 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.android_explorer.data.FileItem
+import com.android_explorer.data.MediaCategory
 import com.android_explorer.ui.browser.BrowserScreen
+import com.android_explorer.ui.category.CategoryScreen
 import com.android_explorer.ui.components.ArchiveProgressDialog
 import com.android_explorer.ui.editor.EditorScreen
 import com.android_explorer.ui.home.HomeScreen
 import com.android_explorer.ui.home.HomeViewModel
+import com.android_explorer.ui.pdf.PdfScreen
 import com.android_explorer.ui.theme.AndroidExplorerTheme
 import com.android_explorer.util.FileOpener
 import com.android_explorer.util.Permissions
+import com.android_explorer.util.PluginManager
 import com.android_explorer.util.ThemeManager
 import java.io.File
 
@@ -54,8 +59,22 @@ private fun AppRoot() {
     // or a specific folder for a home-screen shortcut). rememberSaveable survives process death.
     var browsePath by rememberSaveable { mutableStateOf<String?>(null) }
     val rootPath = remember { android.os.Environment.getExternalStorageDirectory().absolutePath }
+    // Non-null while viewing a device-wide media category (Documents/Pictures/Music/Video).
+    // Stored as the enum name so rememberSaveable can persist it across process death.
+    var categoryName by rememberSaveable { mutableStateOf<String?>(null) }
     // Activity uses configChanges (no recreation on rotation), so remember survives rotation.
     var editorFile by remember { mutableStateOf<File?>(null) }
+    var pdfFile by remember { mutableStateOf<File?>(null) }
+
+    // Shared open resolver, honouring the Plugins settings: built-in editor for text, built-in
+    // reader for PDFs (each only when its plugin is enabled), otherwise the system "open with".
+    val openFile: (FileItem) -> Unit = {
+        when {
+            it.isEditableText && PluginManager.textEditorEnabled -> editorFile = it.file
+            it.isPdf && PluginManager.pdfReaderEnabled -> pdfFile = it.file
+            else -> FileOpener.open(context, it.file)
+        }
+    }
 
     val notificationLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -72,12 +91,20 @@ private fun AppRoot() {
 
     Box(Modifier.fillMaxSize()) {
         val editing = editorFile
+        val viewingPdf = pdfFile
         val browsing = browsePath
+        val category = categoryName?.let { runCatching { MediaCategory.valueOf(it) }.getOrNull() }
         when {
             editing != null -> EditorScreen(file = editing, onClose = { editorFile = null })
+            viewingPdf != null -> PdfScreen(file = viewingPdf, onClose = { pdfFile = null })
+            category != null -> CategoryScreen(
+                category = category,
+                onExit = { categoryName = null },
+                onOpenFile = openFile,
+            )
             browsing != null -> BrowserScreen(
                 onExit = { browsePath = null },
-                onEditFile = { editorFile = it },
+                onOpenFile = openFile,
                 startDir = File(browsing),
             )
             else -> {
@@ -85,9 +112,8 @@ private fun AppRoot() {
                     viewModel = homeViewModel,
                     onBrowse = { browsePath = rootPath },
                     onOpenFolder = { browsePath = it.absolutePath },
-                    onOpenFile = {
-                        if (it.isEditableText) editorFile = it.file else FileOpener.open(context, it.file)
-                    },
+                    onOpenCategory = { categoryName = it.name },
+                    onOpenFile = openFile,
                     onRequestAccess = { context.startActivity(Permissions.allFilesAccessIntent(context)) },
                 )
             }

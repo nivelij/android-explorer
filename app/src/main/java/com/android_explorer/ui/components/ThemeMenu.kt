@@ -26,7 +26,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.android_explorer.util.ThemeManager
 import com.android_explorer.util.ThemeMode
 
-/** Standalone overflow (⋮) menu offering the three theme choices. Used on the Home screen. */
+/** Standalone overflow (⋮) menu offering the theme choices. Used on the Home screen. */
 @Composable
 fun ThemeOverflowMenu() {
     var expanded by remember { mutableStateOf(false) }

@@ -15,6 +15,7 @@ data class FileItem(
     val path: String get() = file.absolutePath
     val extension: String get() = if (isDirectory) "" else file.extension.lowercase()
     val isImage: Boolean get() = !isDirectory && extension in IMAGE_EXTENSIONS
+    val isPdf: Boolean get() = !isDirectory && extension == "pdf"
     val isEditableText: Boolean get() = !isDirectory && extension in TEXT_EXTENSIONS
 
     companion object {
