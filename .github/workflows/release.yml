@@ -1,0 +1,76 @@
+name: Release APK
+
+# Manually triggered from the Actions tab (Run workflow). Builds the release APK
+# and publishes a GitHub Release with it attached.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release tag (e.g. v0.2)"
+        required: true
+        default: "v0.2"
+      prerelease:
+        description: "Mark as a pre-release"
+        type: boolean
+        default: false
+
+# Needed for softprops/action-gh-release to create the release with the default token.
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install SDK packages
+        run: |
+          yes | sdkmanager --licenses > /dev/null || true
+          sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build release APK
+        run: |
+          chmod +x gradlew
+          ./gradlew :app:assembleRelease --no-daemon --stacktrace
+
+      - name: Rename APK
+        run: |
+          mkdir -p dist
+          cp app/build/outputs/apk/release/app-release.apk "dist/android-app-${{ inputs.version }}.apk"
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.version }}
+          name: Android Explorer ${{ inputs.version }}
+          prerelease: ${{ inputs.prerelease }}
+          fail_on_unmatched_files: true
+          files: dist/android-app-${{ inputs.version }}.apk
+          body: |
+            **Android Explorer ${{ inputs.version }}**
+
+            Minimalistic Android file explorer (Kotlin + Jetpack Compose, Material 3). Android 12+.
+
+            - Browse all files, storage dashboard + recents
+            - Extract & create archives (ZIP/7z/TAR.*/RAR extract), password-protected extraction, progress + notification
+            - List / Details views with image thumbnails; long-press context menu (copy/cut/paste, rename, zip, extract, details, delete)
+            - Built-in text editor (line numbers, find, save/save-as)
+            - Themes: System / Light / Dark / OLED; portrait & landscape
+
+            **Download:** `android-app-${{ inputs.version }}.apk` — sideload (enable "install unknown apps"), then grant All files access.
+
+            _Built by CI; signed with a debug key for sideloading._
