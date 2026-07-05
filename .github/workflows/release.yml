@@ -59,6 +59,9 @@ jobs:
           name: Android Explorer ${{ inputs.version }}
           prerelease: ${{ inputs.prerelease }}
           fail_on_unmatched_files: true
+          # Appends an auto-generated "What's Changed" list (commits/PRs since the
+          # previous tag) plus a Full Changelog compare link below the body above.
+          generate_release_notes: true
           files: dist/android-app-${{ inputs.version }}.apk
           body: |
             **Android Explorer ${{ inputs.version }}**
