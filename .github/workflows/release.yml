@@ -76,4 +76,4 @@ jobs:
 
             **Download:** `android-app-${{ inputs.version }}.apk` — sideload (enable "install unknown apps"), then grant All files access.
 
-            _Built by CI; signed with a debug key for sideloading._
+            _Built by CI; signed with the repo's stable debug key — new releases install over older ones (no uninstall needed)._

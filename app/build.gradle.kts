@@ -17,10 +17,23 @@ android {
         vectorDrawables { useSupportLibrary = true }
     }
 
+    signingConfigs {
+        // Point the debug config at a keystore committed to the repo (app/debug.keystore) so every
+        // build — local AND CI — signs with the SAME key. Without this, CI has no keystore and Gradle
+        // auto-generates a random debug key each run, giving every release APK a different signature
+        // ("App not installed" on upgrade). Standard debug credentials; safe to commit (no secret).
+        getByName("debug") {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
     buildTypes {
         release {
-            // Keep v0.1 unminified for reliability (archive libs use reflection); signed with the
-            // debug key so the release APK installs directly for sideloading.
+            // Keep release unminified for reliability (archive libs use reflection); signed with the
+            // committed debug key so release APKs install/upgrade directly for sideloading.
             isMinifyEnabled = false
             isShrinkResources = false
             signingConfig = signingConfigs.getByName("debug")

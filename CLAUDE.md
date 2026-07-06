@@ -85,11 +85,14 @@ the code looks right. Every change:
 
 ## Gotchas
 
-- **Signing / upgrades.** The release build signs with the **debug key**, and CI regenerates a random
-  debug keystore each run (`.github/workflows/release.yml`), so every release APK has a different
-  signature → installing a new release over an old one fails with **"App not installed"**; uninstall
-  first. `versionCode` is also hardcoded to `1`. Proper fix (deferred): a stable release keystore via
-  GitHub secrets + bump `versionCode`.
+- **Signing / upgrades.** The release build signs with the **debug key**, now pinned to a keystore
+  committed at `app/debug.keystore` (wired via the `signingConfigs { getByName("debug") }` block in
+  `app/build.gradle.kts`, standard `android`/`androiddebugkey` creds). Local and CI builds therefore
+  share one signature (SHA-256 `2048018f…`), so new releases **install over old ones** — no uninstall.
+  Don't delete/replace `app/debug.keystore` or that breaks again (`.gitignore` keeps it tracked via the
+  `!debug.keystore` exception). `versionCode` is still hardcoded to `1` — fine for `adb install -r`, but
+  bump it for real Play/version upgrades. For an actual Play Store release you still want a *dedicated*
+  release key (not the debug key) via GitHub secrets — see `TODO.md`.
 - **MediaStore under all-files access** works fine; category queries map each row's `_data` → `File` →
   `FileItem`, filtered by `exists()`. Documents have no MediaStore collection — that category queries
   `MediaStore.Files` by `DISPLAY_NAME LIKE '%.<ext>'`.
