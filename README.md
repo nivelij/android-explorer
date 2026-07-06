@@ -11,7 +11,7 @@ A minimalistic Android file explorer with a built-in archive engine. Kotlin + Je
 - **List & Details views** — default **List** is Windows-Explorer-style (larger file name on the left; size + last-modified right-aligned; folder sizes computed asynchronously). **Details** adds real **image thumbnails** (Coil) and type labels. Toolbar toggles between them.
 - **Theme control** — System default / Light / Dark / **Black (OLED, true #000000)**, chosen from the ⋮ overflow menu (also on the Home screen) and persisted. Defaults to following the device. Managed by `ThemeManager`.
 - **Create folders and files** — both available from the overflow menu.
-- **Long-press context menu** — a bottom sheet with Open, Copy, Cut, Rename, Compress (Zip), Extract (archives), Select, **Details**, and Delete.
+- **Long-press context menu** — a bottom sheet (single column in portrait, two columns in landscape) with Open, Copy, Cut, Rename, Compress (Zip), Share, Extract (archives), Select, **Details**, and Delete.
 - **Clipboard** — Copy/Cut then **Paste** (paste icon appears in the toolbar); recursive copy for folders, move-on-cut, auto-deduped names.
 - **Details popup** — type, size (+ item count for folders), full path, and created / modified / accessed timestamps + permissions (via NIO `BasicFileAttributes`).
 - **Adaptive orientation** — supports both portrait and landscape (follows the device's auto-rotate). The home screen switches between a two-pane layout (landscape) and a stacked layout (portrait); `configChanges` preserves state across rotation.

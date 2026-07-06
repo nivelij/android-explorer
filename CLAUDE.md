@@ -1,9 +1,9 @@
 # CLAUDE.md
 
 Working notes for Claude Code / agents in this repo. The user-facing feature list lives in
-`README.md` (which may lag the code — e.g. "Details" view is now "Grid", and context menus are
-centered pop-ups, not bottom sheets). This file covers how the code is put together and what's easy
-to get wrong.
+`README.md` (which may lag the code — e.g. "Details" view is now "Grid", and the long-press context
+menu is always a bottom sheet: single column in portrait, a 2-column grid in landscape).
+This file covers how the code is put together and what's easy to get wrong.
 
 ## Stack
 
@@ -72,12 +72,20 @@ the code looks right. Every change:
 - **Icons.** `material-icons-extended`, `Icons.Rounded.*`. Central file-type icon + accent-color
   mapping is `ui/components/FileIcons.kt` (`FileKind` enum, `kindOf`/`iconFor`/`colorFor`). Per-folder
   drawable overrides go through `specialFolderIconRes` (e.g. Download → `ic_folder_download`).
-- **Context menus** are centered pop-ups (a plain `Dialog` + `Surface`, styled with `AlertDialogDefaults`
-  — *not* `AlertDialog`, whose height-constrained `text` slot cramped long action lists; here the action
-  column grows to ~62% of screen height before scrolling) in `ui/components/FileContextSheet.kt`:
-  `FileContextSheet` (browser) and `RecentsContextSheet` (flat lists: home / category / search).
-  Actions are optional lambdas rendered conditionally — e.g. `onShare` only for non-folders,
-  `onSetWallpaper` only for images.
+- **Context menus** live in `ui/components/FileContextSheet.kt`: `FileContextSheet` (browser) and
+  `RecentsContextSheet` (flat lists: home / category / search). Both keep the same public signature but
+  now build a `List<ContextAction>` (data, not composables) and hand it to a private `ContextMenu`,
+  which is **always a Material `ModalBottomSheet`** (drag handle, one consistent look). Only the action
+  *layout* adapts by `LocalConfiguration.orientation`: **portrait → a single column**, **landscape → a
+  2-column grid** (`normal.chunked(2)` + `Modifier.weight(1f)` cells, `Spacer(weight 1f)` for an odd last
+  item) — because the landscape sheet is short. The sheet content is wrapped in `verticalScroll` so a long
+  list (or the short landscape sheet) never clips. `dismissThen` plays the slide-out (`sheetState.hide()`)
+  before running the action. Both orientations share `MenuHeader` (type icon + name + `size · EXT`) and a
+  trailing destructive **Delete** (always full-width) split off by a divider; **no "Close" button** (tap
+  scrim / swipe / back). Each action's own callback clears the caller's menu state, so it self-dismisses.
+  Actions are still conditional — e.g. `onShare` only for non-folders, `onSetWallpaper` only for images.
+  MainActivity's `configChanges` includes `orientation`, so rotating re-lays-out without recreating the
+  Activity.
 - **View modes.** `ViewMode { LIST, GRID }`; rows are `FileListItem` / `FileGridItem` in
   `FileEntry.kt`. The browser toggles; the Pictures/Video categories default to grid, others to list.
 - **Archives.** Long jobs run through the foreground `ArchiveService` (not inline), with progress on a
@@ -99,14 +107,26 @@ the code looks right. Every change:
 - **Search** is a live recursive filesystem walk (no index) from the storage root; it runs off the
   main thread with a spinner and can take a moment on large trees. Matching is case-insensitive
   substring on the name (any extension); hidden entries are skipped.
+- **OLED + translucent surfaces.** The OLED theme forces `surface`/`background` to pure `#000000`, so a
+  card painted with a *translucent* surface tint (e.g. `surfaceVariant.copy(alpha = …)`) collapses into
+  the background and vanishes. For panels that must stay visible on every theme, use a **solid** container
+  role (`surfaceContainerHigh`) plus a hairline `BorderStroke(1.dp, outlineVariant)` — see the Storage
+  card in `HomeScreen.kt`. Avoid `alpha`-over-surface fills for anything that needs an edge on OLED.
 - **PdfRenderer** allows only one open page at a time → `PdfScreen` serializes rendering behind a
   `Mutex`, renders off-main, and erases each page to white first (else transparency renders black).
 - **PDF zoom** uses two scales: a live `gestureScale` applied via `graphicsLayer` (smooth pinch/
   double-tap, capped 5×) and a debounced `renderScale` (capped `MAX_RENDER_SCALE`=3×, width capped
   `MAX_RENDER_WIDTH_PX`) that re-renders visible pages at the settled zoom so text stays crisp. The
   pinch/pan gesture runs on `PointerEventPass.Initial` and only consumes moves when zoomed or on
-  multi-touch, so at 1× the `LazyColumn` keeps native scroll+fling; while zoomed
-  `userScrollEnabled=false` and vertical drags drive `lazyState.scrollBy` instead.
+  multi-touch, so at 1× the `LazyColumn` keeps native scroll+fling. The `graphicsLayer` uses a
+  **top-left `transformOrigin(0,0)`** so the transform math is clean, and zoom **anchors to the pinch/
+  double-tap focal point** (`event.calculateCentroid()` / the tap offset) — not a fixed center.
+  Horizontal is `translationX = offsetX` (clamped `[-(scale-1)·w, 0]`); vertical is the `LazyColumn`'s
+  own scroll (so paging still works while zoomed) driven **synchronously via `lazyState.dispatchRawDelta`**
+  for both the focal-zoom correction and finger pan. Do *not* go back to launching a coroutine per event
+  for `scrollBy` — overlapping launches fight the scroll lock and vertical panning barely moves.
+  `dispatchRawDelta` works even though `userScrollEnabled=false` while zoomed (that flag only gates *user*
+  gestures, not programmatic scroll).
 - **`items` name clash.** `LazyColumn` and `LazyVerticalGrid` both export `items`; import the grid one
   as `gridItems` (`androidx.compose.foundation.lazy.grid.items as gridItems`).
 - **Multi-line commit messages** with embedded double quotes break shell parsing — use
