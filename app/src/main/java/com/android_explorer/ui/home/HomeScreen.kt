@@ -1,5 +1,6 @@
 package com.android_explorer.ui.home
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -182,8 +183,12 @@ private fun StoragePane(
         SectionHeader("Storage")
         Spacer(Modifier.size(12.dp))
         Card(
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)),
+            // Solid container + a hairline outline so the panel stays visible on every theme —
+            // notably OLED, where the old translucent surfaceVariant tint collapsed into the
+            // pure-black background and the card disappeared entirely.
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
             elevation = CardDefaults.cardElevation(0.dp),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
             shape = RoundedCornerShape(20.dp),
             modifier = Modifier.fillMaxWidth(),
         ) {

@@ -60,7 +60,9 @@ fun StorageMeter(volume: VolumeStat, modifier: Modifier = Modifier) {
             modifier = Modifier
                 .fillMaxWidth()
                 .height(10.dp),
-            trackColor = MaterialTheme.colorScheme.surfaceVariant,
+            // A faint tint of the accent, not surfaceVariant: on OLED the card fill and surfaceVariant
+            // are both near-black, so the unfilled track collapsed and the free-space portion vanished.
+            trackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.24f),
             color = MaterialTheme.colorScheme.primary,
             strokeCap = androidx.compose.ui.graphics.StrokeCap.Round,
         )
