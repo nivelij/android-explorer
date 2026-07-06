@@ -85,7 +85,7 @@ fun colorFor(item: FileItem): Color = kindOf(item).color
 fun specialFolderIconRes(item: FileItem): Int? {
     if (!item.isDirectory) return null
     val root = android.os.Environment.getExternalStorageDirectory().absolutePath
-    if (item.file.parent != root) return null
+    if (item.file?.parent != root) return null
     return when (item.name) {
         "Download" -> com.android_explorer.R.drawable.ic_folder_download
         else -> null

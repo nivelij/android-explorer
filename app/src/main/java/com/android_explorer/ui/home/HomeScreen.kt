@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -18,14 +20,17 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material.icons.rounded.Extension
 import androidx.compose.material.icons.rounded.FolderOpen
+import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Movie
 import androidx.compose.material.icons.rounded.MusicNote
+import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -34,6 +39,8 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -42,6 +49,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -57,6 +65,7 @@ import com.android_explorer.R
 import com.android_explorer.data.FileItem
 import com.android_explorer.data.MediaCategory
 import com.android_explorer.data.VolumeStat
+import com.android_explorer.ui.drive.DriveSection
 import com.android_explorer.ui.components.ArchiveContentsDialog
 import com.android_explorer.ui.components.ConfirmDialog
 import com.android_explorer.ui.components.FileDetailsDialog
@@ -78,6 +87,7 @@ fun HomeScreen(
     onOpenFile: (FileItem) -> Unit,
     onSearch: () -> Unit,
     onRequestAccess: () -> Unit,
+    onOpenDrive: () -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val details by viewModel.details.collectAsStateWithLifecycle()
@@ -86,6 +96,8 @@ fun HomeScreen(
     var previewItem by remember { mutableStateOf<FileItem?>(null) }
     var deleteItem by remember { mutableStateOf<FileItem?>(null) }
     var showPlugins by remember { mutableStateOf(false) }
+    // Bottom-nav tab: 0 = Home (storage / browse / shortcuts / Drive), 1 = Recent (recent files).
+    var tab by rememberSaveable { mutableStateOf(0) }
 
     Scaffold(
         topBar = {
@@ -108,6 +120,26 @@ fun HomeScreen(
                 },
             )
         },
+        bottomBar = {
+            if (state.hasAccess) {
+                // Drop the bottom system-nav inset padding so the bar isn't padded extra-tall; the
+                // Scaffold already keeps content clear of the gesture area.
+                NavigationBar(windowInsets = WindowInsets(0, 0, 0, 0)) {
+                    NavigationBarItem(
+                        selected = tab == 0,
+                        onClick = { tab = 0 },
+                        icon = { Icon(Icons.Rounded.Home, contentDescription = null) },
+                        label = { Text("Home") },
+                    )
+                    NavigationBarItem(
+                        selected = tab == 1,
+                        onClick = { tab = 1 },
+                        icon = { Icon(Icons.Rounded.Schedule, contentDescription = null) },
+                        label = { Text("Recent") },
+                    )
+                }
+            }
+        },
     ) { padding ->
         if (!state.hasAccess) {
             AccessPrompt(Modifier.padding(padding), onRequestAccess)
@@ -119,18 +151,35 @@ fun HomeScreen(
             // Tap: archives open the contents preview (they have no default "open" app);
             // everything else defers to the host (editor for text, otherwise "open with").
             val onOpenRecent: (FileItem) -> Unit = { if (it.isArchive) previewItem = it else onOpenFile(it) }
-            if (landscape) {
-                Row(Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 8.dp)) {
-                    StoragePane(state.volumes, onBrowse, onOpenFolder, onOpenCategory, Modifier.weight(0.42f).fillMaxSize())
-                    Spacer(Modifier.size(20.dp))
-                    RecentsPane(state.recents, onOpenRecent, { contextItem = it }, Modifier.weight(0.58f).fillMaxSize())
+            when (tab) {
+                // Home tab: storage / browse / shortcuts / Drive. Scrollable so tall content (e.g. a
+                // connected Drive card) never clips. Landscape keeps the 50:50 two-column split.
+                0 -> if (landscape) {
+                    Row(Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 8.dp)) {
+                        StoragePane(
+                            state.volumes, onBrowse, onOpenFolder, onOpenCategory,
+                            Modifier.weight(0.5f).fillMaxHeight().verticalScroll(rememberScrollState()),
+                        )
+                        Spacer(Modifier.size(20.dp))
+                        Column(Modifier.weight(0.5f).fillMaxHeight().verticalScroll(rememberScrollState())) {
+                            DriveSection(onOpenDrive, Modifier.fillMaxWidth())
+                        }
+                    }
+                } else {
+                    Column(
+                        Modifier.fillMaxSize().verticalScroll(rememberScrollState())
+                            .padding(horizontal = 20.dp, vertical = 8.dp),
+                    ) {
+                        StoragePane(state.volumes, onBrowse, onOpenFolder, onOpenCategory, Modifier.fillMaxWidth())
+                        Spacer(Modifier.size(20.dp))
+                        DriveSection(onOpenDrive, Modifier.fillMaxWidth())
+                    }
                 }
-            } else {
-                Column(Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
-                    StoragePane(state.volumes, onBrowse, onOpenFolder, onOpenCategory, Modifier.fillMaxWidth())
-                    Spacer(Modifier.size(20.dp))
-                    RecentsPane(state.recents, onOpenRecent, { contextItem = it }, Modifier.weight(1f).fillMaxWidth())
-                }
+                // Recent tab: the recent-files list, full screen.
+                else -> RecentsPane(
+                    state.recents, onOpenRecent, { contextItem = it },
+                    Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 8.dp),
+                )
             }
         }
     }
@@ -145,8 +194,8 @@ fun HomeScreen(
             },
             onViewContents = if (item.isArchive) { { previewItem = item; contextItem = null } } else null,
             onExtract = if (item.isArchive) { { viewModel.extract(item); contextItem = null } } else null,
-            onShare = if (!item.isDirectory) { { FileOpener.share(context, item.file); contextItem = null } } else null,
-            onSetWallpaper = if (item.isImage) { { Wallpaper.setAsWallpaper(context, item.file); contextItem = null } } else null,
+            onShare = if (!item.isDirectory) { { item.file?.let { FileOpener.share(context, it) }; contextItem = null } } else null,
+            onSetWallpaper = if (item.isImage) { { item.file?.let { Wallpaper.setAsWallpaper(context, it) }; contextItem = null } } else null,
             onDetails = { viewModel.showDetails(item); contextItem = null },
             onDelete = { deleteItem = item; contextItem = null },
         )

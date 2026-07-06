@@ -60,7 +60,7 @@ class MediaStoreRepository {
                 val size = if (sizeIdx >= 0) c.getLong(sizeIdx) else file.length()
                 val modified = if (dateIdx >= 0) c.getLong(dateIdx) * 1000L else file.lastModified()
                 out += FileItem(
-                    file = file,
+                    location = NodeRef.Local(file),
                     name = name,
                     isDirectory = false,
                     size = size,

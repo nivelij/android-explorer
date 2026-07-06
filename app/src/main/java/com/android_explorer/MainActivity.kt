@@ -25,6 +25,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.android_explorer.data.FileItem
 import com.android_explorer.data.MediaCategory
 import com.android_explorer.ui.browser.BrowserScreen
+import com.android_explorer.ui.drive.DriveBrowserScreen
 import com.android_explorer.ui.category.CategoryScreen
 import com.android_explorer.ui.components.ArchiveProgressDialog
 import com.android_explorer.ui.editor.EditorScreen
@@ -68,15 +69,21 @@ private fun AppRoot() {
     // Activity uses configChanges (no recreation on rotation), so remember survives rotation.
     var editorFile by remember { mutableStateOf<File?>(null) }
     var pdfFile by remember { mutableStateOf<File?>(null) }
+    // True while browsing Google Drive (a top-level destination, like the local browser).
+    var driveBrowsing by rememberSaveable { mutableStateOf(false) }
 
     // Shared open resolver, honouring the Plugins settings: built-in editor for text, built-in
     // reader for PDFs (each only when its plugin is enabled), otherwise the system "open with".
-    val openFile: (FileItem) -> Unit = {
-        when {
-            it.isEditableText && PluginManager.textEditorEnabled -> editorFile = it.file
-            it.isPdf && PluginManager.pdfReaderEnabled -> pdfFile = it.file
-            else -> FileOpener.open(context, it.file)
+    val openFile: (FileItem) -> Unit = { item ->
+        val f = item.file
+        if (f != null) {
+            when {
+                item.isEditableText && PluginManager.textEditorEnabled -> editorFile = f
+                item.isPdf && PluginManager.pdfReaderEnabled -> pdfFile = f
+                else -> FileOpener.open(context, f)
+            }
         }
+        // Drive items have no local file yet — download-to-cache then open is wired in a later step.
     }
 
     val notificationLauncher = rememberLauncherForActivityResult(
@@ -116,6 +123,10 @@ private fun AppRoot() {
                 onSearch = { searching = true },
                 startDir = File(browsing),
             )
+            driveBrowsing -> DriveBrowserScreen(
+                onExit = { driveBrowsing = false },
+                onOpenFile = openFile,
+            )
             else -> {
                 HomeScreen(
                     viewModel = homeViewModel,
@@ -125,6 +136,7 @@ private fun AppRoot() {
                     onOpenFile = openFile,
                     onSearch = { searching = true },
                     onRequestAccess = { context.startActivity(Permissions.allFilesAccessIntent(context)) },
+                    onOpenDrive = { driveBrowsing = true },
                 )
             }
         }

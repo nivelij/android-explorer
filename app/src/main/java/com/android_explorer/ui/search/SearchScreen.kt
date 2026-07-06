@@ -78,7 +78,7 @@ fun SearchScreen(
 
     val onOpen: (FileItem) -> Unit = { item ->
         when {
-            item.isDirectory -> onOpenFolder(item.file)
+            item.isDirectory -> item.file?.let(onOpenFolder)
             item.isArchive -> previewItem = item
             else -> onOpenFile(item)
         }
@@ -152,8 +152,8 @@ fun SearchScreen(
             onOpen = { onOpen(item); contextItem = null },
             onViewContents = if (item.isArchive) { { previewItem = item; contextItem = null } } else null,
             onExtract = if (item.isArchive) { { viewModel.extract(item); contextItem = null } } else null,
-            onShare = if (!item.isDirectory) { { FileOpener.share(context, item.file); contextItem = null } } else null,
-            onSetWallpaper = if (item.isImage) { { Wallpaper.setAsWallpaper(context, item.file); contextItem = null } } else null,
+            onShare = if (!item.isDirectory) { { item.file?.let { FileOpener.share(context, it) }; contextItem = null } } else null,
+            onSetWallpaper = if (item.isImage) { { item.file?.let { Wallpaper.setAsWallpaper(context, it) }; contextItem = null } } else null,
             onDetails = { viewModel.showDetails(item); contextItem = null },
             onDelete = { deleteItem = item; contextItem = null },
         )

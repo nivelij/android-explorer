@@ -42,7 +42,7 @@ fun ArchiveContentsDialog(
     onExtract: () -> Unit,
 ) {
     val listing by produceState<ArchiveListing?>(initialValue = null, item.path) {
-        value = withContext(Dispatchers.IO) { ArchiveManager.listEntries(item.file) }
+        value = item.file?.let { f -> withContext(Dispatchers.IO) { ArchiveManager.listEntries(f) } }
     }
 
     AlertDialog(

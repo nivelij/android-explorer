@@ -142,8 +142,8 @@ fun CategoryScreen(
             onOpen = { onOpen(item); contextItem = null },
             onViewContents = if (item.isArchive) { { previewItem = item; contextItem = null } } else null,
             onExtract = if (item.isArchive) { { viewModel.extract(item); contextItem = null } } else null,
-            onShare = if (!item.isDirectory) { { FileOpener.share(context, item.file); contextItem = null } } else null,
-            onSetWallpaper = if (item.isImage) { { Wallpaper.setAsWallpaper(context, item.file); contextItem = null } } else null,
+            onShare = if (!item.isDirectory) { { item.file?.let { FileOpener.share(context, it) }; contextItem = null } } else null,
+            onSetWallpaper = if (item.isImage) { { item.file?.let { Wallpaper.setAsWallpaper(context, it) }; contextItem = null } } else null,
             onDetails = { viewModel.showDetails(item); contextItem = null },
             onDelete = { deleteItem = item; contextItem = null },
         )
@@ -169,7 +169,7 @@ fun CategoryScreen(
 
 /** The file's containing folder, shown relative to the storage root (e.g. "DCIM/Camera"). */
 private fun parentLabel(item: FileItem, root: String): String {
-    val parent = item.file.parent ?: return ""
+    val parent = item.file?.parent ?: return ""
     return when {
         parent == root -> "Internal storage"
         parent.startsWith(root) -> parent.removePrefix(root).trim('/')

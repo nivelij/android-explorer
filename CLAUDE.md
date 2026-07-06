@@ -66,6 +66,29 @@ the code looks right. Every change:
 - **Repositories** are plain classes: `FileRepository` (raw filesystem via all-files access, incl.
   `search()`), `MediaStoreRepository` (device-wide category aggregation), `StorageRepository`,
   `RecentFilesRepository`.
+- **`FileItem` is backend-agnostic.** It carries a `location: NodeRef` — `Local(File)` or
+  `Drive(id, parentId, mimeType)` — so the same rows/UI render either source. `file` is a **nullable**
+  `File?` (local only); local-only paths call `requireFile()`, and features that need a real `File`
+  (editor / PDF / "open with" / Share / wallpaper / archive engine) get one via a **temp download** for
+  Drive items. `path` is the stable id (`absolutePath` for local, `drive:<id>` for Drive); `extension`/
+  `isImage`/`isPdf` are name-derived (work for both).
+- **Google Drive** lives in `data/drive/`: `DriveAuth` (OAuth via Play Services **Authorization API** —
+  on-device access token, no client id/secret in code; connected email persisted in prefs, `init()` in
+  `App`), `DriveApi` (Drive REST v3 over OkHttp: `listFolder`/`download`/`accountEmail`/`storageQuota`,
+  bearer-auth with a 401 refresh-retry), and `DriveRepository` (maps `DriveFile`→`FileItem`, caches
+  downloads). UI: `ui/drive/DriveSection` (Home connect card / connected storage-meter + "Browse Google
+  Drive Files"), `DriveBrowserScreen`+`DriveBrowserViewModel` (read-only folder-id nav stack reusing
+  `FileListItem`; file tap downloads-to-cache then routes through the shared `openFile`). `AppRoot` gets
+  a `driveBrowsing` branch.
+- **Cross-backend transfers (Drive writes).** `FileItem`s carry their backend (`NodeRef`), so one app-wide
+  `TransferClipboard` (object) is shared by both browsers; `TransferManager.paste(context, clip, destNodeRef)`
+  dispatches by source→dest: local→local (FileRepository copy/move), **local→Drive = upload**, **Drive→local =
+  download**, Drive→Drive = server move (cut) or copy (recursive for folders). Local & Drive browsers both read
+  the shared clipboard (paste icon shows whenever it's non-empty) and paste into their current folder. Drive
+  write ops live in `DriveApi`/`DriveRepository` (upload multipart, createFolder, rename, move via
+  addParents/removeParents, **trash = the "Delete" action, recoverable**, copyFile). `DriveContextSheet` (in
+  `FileContextSheet.kt`, reusing the private `ContextMenu`) gives Drive rows Open/Copy/Cut/Rename/Delete; the
+  Drive top bar has New-folder + Paste. Long transfers show a busy overlay (no dedicated service yet).
 - **Settings are SharedPreferences singletons** (`object`s), **not** DataStore (that dependency is
   present but unused): `ThemeManager`, `PluginManager`. Both are `init()`-ed in `App.onCreate`. Add a
   new setting by mirroring the pattern: `MutableStateFlow` + prefs read/write + `init`.
@@ -86,6 +109,10 @@ the code looks right. Every change:
   Actions are still conditional — e.g. `onShare` only for non-folders, `onSetWallpaper` only for images.
   MainActivity's `configChanges` includes `orientation`, so rotating re-lays-out without recreating the
   Activity.
+- **Home has a bottom `NavigationBar`** (`HomeScreen`, `tab` rememberSaveable): **Home** tab = Storage /
+  Browse / Shortcuts / Google Drive (scrollable; landscape keeps the 50:50 Storage|Drive split), **Recent**
+  tab (clock icon) = the recent-files list. The long-press context sheet + dialogs live at the `HomeScreen`
+  level so they work regardless of the active tab.
 - **View modes.** `ViewMode { LIST, GRID }`; rows are `FileListItem` / `FileGridItem` in
   `FileEntry.kt`. The browser toggles; the Pictures/Video categories default to grid, others to list.
 - **Archives.** Long jobs run through the foreground `ArchiveService` (not inline), with progress on a
@@ -107,6 +134,13 @@ the code looks right. Every change:
 - **Search** is a live recursive filesystem walk (no index) from the storage root; it runs off the
   main thread with a spinner and can take a moment on large trees. Matching is case-insensitive
   substring on the name (any extension); hidden entries are skipped.
+- **Google Drive OAuth setup.** Access needs an **Android** OAuth client in the Cloud project (matched by
+  package `com.android_explorer` + signing SHA-1 of the committed `app/debug.keystore`) — NOT a Desktop/Web
+  client. The consent screen stays in **Testing** with the tester's email added and the full `…/auth/drive`
+  scope, which avoids Google verification (a one-time "unverified app" click-through is expected). No client
+  id/secret is embedded — the Authorization API identifies the app by package+SHA-1. Runtime OAuth can't be
+  scripted via adb (needs a real Google account + interactive consent); verify sign-in by hand. The token is
+  short-lived and re-fetched silently; a Drive call with no token surfaces "reconnect required".
 - **OLED + translucent surfaces.** The OLED theme forces `surface`/`background` to pure `#000000`, so a
   card painted with a *translucent* surface tint (e.g. `surfaceVariant.copy(alpha = …)`) collapses into
   the background and vanishes. For panels that must stay visible on every theme, use a **solid** container

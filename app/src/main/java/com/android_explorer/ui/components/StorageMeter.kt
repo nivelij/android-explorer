@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Cloud
 import androidx.compose.material.icons.rounded.SdCard
 import androidx.compose.material.icons.rounded.Smartphone
 import androidx.compose.material3.Icon
@@ -34,7 +35,11 @@ fun StorageMeter(volume: VolumeStat, modifier: Modifier = Modifier) {
     Column(modifier = modifier.fillMaxWidth()) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(
-                imageVector = if (volume.name.startsWith("Internal")) Icons.Rounded.Smartphone else Icons.Rounded.SdCard,
+                imageVector = when {
+                    volume.name.startsWith("Internal") -> Icons.Rounded.Smartphone
+                    volume.name.contains("Drive") -> Icons.Rounded.Cloud
+                    else -> Icons.Rounded.SdCard
+                },
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(20.dp),

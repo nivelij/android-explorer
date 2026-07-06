@@ -7,7 +7,10 @@ import com.android_explorer.archive.ArchiveType
 import com.android_explorer.data.FileDetails
 import com.android_explorer.data.FileItem
 import com.android_explorer.data.FileRepository
+import com.android_explorer.data.NodeRef
 import com.android_explorer.data.SortBy
+import com.android_explorer.data.TransferClipboard
+import com.android_explorer.data.TransferManager
 import com.android_explorer.data.ViewMode
 import com.android_explorer.service.ArchiveService
 import kotlinx.coroutines.Dispatchers
@@ -19,9 +22,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 
-/** Files staged for paste, and whether the paste should move (cut) or duplicate (copy). */
-data class ClipboardData(val paths: List<String>, val cut: Boolean)
-
 data class BrowserUiState(
     val dir: File,
     val items: List<FileItem> = emptyList(),
@@ -31,11 +31,11 @@ data class BrowserUiState(
     val showHidden: Boolean = false,
     val view: ViewMode = ViewMode.LIST,
     val folderSizes: Map<String, Long> = emptyMap(),
-    val clipboard: ClipboardData? = null,
+    // Mirrors the app-wide TransferClipboard (may hold local or Drive items from either browser).
+    val hasClipboard: Boolean = false,
     val loading: Boolean = true,
 ) {
     val inSelectionMode: Boolean get() = selected.isNotEmpty()
-    val hasClipboard: Boolean get() = clipboard != null && clipboard.paths.isNotEmpty()
 }
 
 class BrowserViewModel(app: Application) : AndroidViewModel(app) {
@@ -51,6 +51,10 @@ class BrowserViewModel(app: Application) : AndroidViewModel(app) {
 
     init {
         refresh()
+        // Reflect the shared clipboard (set by this or the Drive browser) into the paste affordance.
+        viewModelScope.launch {
+            TransferClipboard.clip.collect { c -> _state.value = _state.value.copy(hasClipboard = c != null) }
+        }
     }
 
     private var folderSizeJob: Job? = null
@@ -75,7 +79,8 @@ class BrowserViewModel(app: Application) : AndroidViewModel(app) {
         folderSizeJob = viewModelScope.launch {
             val sizes = HashMap(_state.value.folderSizes)
             for (dir in dirs) {
-                val size = withContext(Dispatchers.IO) { repo.folderSize(dir.file) }
+                val f = dir.file ?: continue
+                val size = withContext(Dispatchers.IO) { repo.folderSize(f) }
                 sizes[dir.path] = size
                 // Publish incrementally so the UI updates as sizes arrive.
                 _state.value = _state.value.copy(folderSizes = HashMap(sizes))
@@ -84,7 +89,7 @@ class BrowserViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun open(item: FileItem) {
-        if (item.isDirectory) navigateTo(item.file)
+        if (item.isDirectory) item.file?.let { navigateTo(it) }
     }
 
     fun navigateTo(dir: File) {
@@ -158,26 +163,19 @@ class BrowserViewModel(app: Application) : AndroidViewModel(app) {
 
     fun copyToClipboard(items: List<FileItem>, cut: Boolean) {
         if (items.isEmpty()) return
-        _state.value = _state.value.copy(
-            clipboard = ClipboardData(items.map { it.path }, cut),
-            selected = emptySet(),
-        )
+        TransferClipboard.set(items, cut)
+        _state.value = _state.value.copy(selected = emptySet())
     }
 
-    fun clearClipboard() {
-        _state.value = _state.value.copy(clipboard = null)
-    }
+    fun clearClipboard() = TransferClipboard.clear()
 
     fun paste() {
-        val clip = _state.value.clipboard ?: return
+        val clip = TransferClipboard.current ?: return
         val destDir = _state.value.dir
         viewModelScope.launch {
-            withContext(Dispatchers.IO) {
-                clip.paths.map(::File).forEach { src ->
-                    if (!src.exists() || repo.isInsideOrSame(src, destDir)) return@forEach
-                    if (clip.cut) repo.moveInto(src, destDir) else repo.copyInto(src, destDir)
-                }
-            }
+            _state.value = _state.value.copy(loading = true)
+            // Handles local→local (copy/move) and Drive→local (download) via the shared engine.
+            withContext(Dispatchers.IO) { TransferManager.paste(getApplication(), clip, NodeRef.Local(destDir)) }
             // A cut is consumed; a copy stays available for repeated pastes.
             if (clip.cut) clearClipboard()
             refresh()
@@ -199,14 +197,16 @@ class BrowserViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun extract(item: FileItem) {
-        val dest = repo.extractionTargetFor(item.file)
-        ArchiveService.extract(getApplication(), item.path, dest.absolutePath)
+        val f = item.file ?: return
+        val dest = repo.extractionTargetFor(f)
+        ArchiveService.extract(getApplication(), f.absolutePath, dest.absolutePath)
     }
 
     /** Extract [item] into a user-chosen [destParent] (a folder named after the archive is created). */
     fun extractTo(item: FileItem, destParent: File) {
-        val dest = repo.extractionTargetIn(destParent, item.file)
-        ArchiveService.extract(getApplication(), item.path, dest.absolutePath)
+        val f = item.file ?: return
+        val dest = repo.extractionTargetIn(destParent, f)
+        ArchiveService.extract(getApplication(), f.absolutePath, dest.absolutePath)
     }
 
     fun subFolders(dir: File): List<File> = repo.subFolders(dir)
@@ -221,7 +221,7 @@ class BrowserViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun defaultArchiveNameFor(items: List<FileItem>): String =
-        if (items.size == 1) items.first().file.nameWithoutExtension else _state.value.dir.name
+        if (items.size == 1) items.first().name.substringBeforeLast('.') else _state.value.dir.name
 
     fun showDetails(item: FileItem) {
         viewModelScope.launch {

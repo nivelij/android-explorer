@@ -119,6 +119,30 @@ fun RecentsContextSheet(
 }
 
 /**
+ * Long-press menu for a Google Drive entry. Read/write actions that apply to Drive: open (download +
+ * view), copy/cut (to the shared clipboard — paste elsewhere to transfer), rename, and delete (trash).
+ */
+@Composable
+fun DriveContextSheet(
+    item: FileItem,
+    onDismiss: () -> Unit,
+    onOpen: () -> Unit,
+    onCopy: () -> Unit,
+    onCut: () -> Unit,
+    onRename: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    val actions = buildList {
+        add(ContextAction(Icons.Rounded.OpenInNew, "Open", onClick = onOpen))
+        add(ContextAction(Icons.Rounded.ContentCopy, "Copy", onClick = onCopy))
+        add(ContextAction(Icons.Rounded.ContentCut, "Cut", onClick = onCut))
+        add(ContextAction(Icons.Rounded.DriveFileRenameOutline, "Rename", onClick = onRename))
+        add(ContextAction(Icons.Rounded.Delete, "Delete", destructive = true, onClick = onDelete))
+    }
+    ContextMenu(item, onDismiss, actions)
+}
+
+/**
  * The long-press menu is always a Material [ModalBottomSheet] (thumb-reachable, drag handle, one
  * consistent look in both orientations). Only the *action layout* adapts: a single column in portrait,
  * a 2-column grid in landscape — where the sheet is short, so a tall single column would need a lot of

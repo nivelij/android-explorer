@@ -54,8 +54,9 @@ class CategoryViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun extract(item: FileItem) {
-        val dest = fileRepo.extractionTargetFor(item.file)
-        ArchiveService.extract(getApplication(), item.path, dest.absolutePath)
+        val f = item.file ?: return
+        val dest = fileRepo.extractionTargetFor(f)
+        ArchiveService.extract(getApplication(), f.absolutePath, dest.absolutePath)
     }
 
     fun showDetails(item: FileItem) {

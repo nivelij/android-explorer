@@ -222,8 +222,8 @@ fun BrowserScreen(
             onZip = { compressItems = listOf(item); contextItem = null },
             onViewContents = if (item.isArchive) { { previewItem = item; contextItem = null } } else null,
             onExtract = if (item.isArchive) { { viewModel.extract(item); contextItem = null } } else null,
-            onShare = if (!item.isDirectory) { { FileOpener.share(context, item.file); contextItem = null } } else null,
-            onSetWallpaper = if (item.isImage) { { Wallpaper.setAsWallpaper(context, item.file); contextItem = null } } else null,
+            onShare = if (!item.isDirectory) { { item.file?.let { FileOpener.share(context, it) }; contextItem = null } } else null,
+            onSetWallpaper = if (item.isImage) { { item.file?.let { Wallpaper.setAsWallpaper(context, it) }; contextItem = null } } else null,
             onDelete = { deleteItems = listOf(item); contextItem = null },
             onSelect = { viewModel.toggleSelect(item); contextItem = null },
             onDetails = { viewModel.showDetails(item); contextItem = null },
@@ -237,7 +237,7 @@ fun BrowserScreen(
             onViewContents = { previewItem = item; archiveAction = null },
             onExtractHere = { viewModel.extract(item); archiveAction = null },
             onExtractTo = { folderPickerFor = item; archiveAction = null },
-            onOpen = { FileOpener.open(context, item.file); archiveAction = null },
+            onOpen = { item.file?.let { FileOpener.open(context, it) }; archiveAction = null },
         )
     }
     previewItem?.let { item ->

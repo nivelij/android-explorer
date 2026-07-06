@@ -95,6 +95,10 @@ dependencies {
     // Image thumbnails
     implementation(libs.coil.compose)
 
+    // Google Drive: on-device OAuth (Authorization API) + Drive REST over OkHttp
+    implementation(libs.play.services.auth)
+    implementation(libs.okhttp)
+
     debugImplementation(libs.androidx.ui.tooling)
 
     testImplementation(libs.junit)

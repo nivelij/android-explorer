@@ -58,7 +58,7 @@ class FileRepository {
 
     fun delete(items: List<FileItem>): Int {
         var count = 0
-        items.forEach { if (deleteRecursively(it.file)) count++ }
+        items.forEach { if (deleteRecursively(it.requireFile())) count++ }
         return count
     }
 
@@ -78,7 +78,7 @@ class FileRepository {
 
     /** Full metadata for the Details popup (created/accessed via NIO; folder size is recursive). */
     fun details(item: FileItem): FileDetails {
-        val f = item.file
+        val f = item.requireFile()
         var created = 0L
         var accessed = 0L
         try {
@@ -129,8 +129,9 @@ class FileRepository {
             .sortedBy { it.name.lowercase(Locale.ROOT) }
 
     fun rename(item: FileItem, newName: String): Boolean {
-        val target = File(item.file.parentFile, newName)
-        return item.file.renameTo(target)
+        val f = item.requireFile()
+        val target = File(f.parentFile, newName)
+        return f.renameTo(target)
     }
 
     /** Copies a file/folder into [destDir], picking a non-clashing name. */
