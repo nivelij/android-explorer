@@ -101,6 +101,12 @@ the code looks right. Every change:
   substring on the name (any extension); hidden entries are skipped.
 - **PdfRenderer** allows only one open page at a time → `PdfScreen` serializes rendering behind a
   `Mutex`, renders off-main, and erases each page to white first (else transparency renders black).
+- **PDF zoom** uses two scales: a live `gestureScale` applied via `graphicsLayer` (smooth pinch/
+  double-tap, capped 5×) and a debounced `renderScale` (capped `MAX_RENDER_SCALE`=3×, width capped
+  `MAX_RENDER_WIDTH_PX`) that re-renders visible pages at the settled zoom so text stays crisp. The
+  pinch/pan gesture runs on `PointerEventPass.Initial` and only consumes moves when zoomed or on
+  multi-touch, so at 1× the `LazyColumn` keeps native scroll+fling; while zoomed
+  `userScrollEnabled=false` and vertical drags drive `lazyState.scrollBy` instead.
 - **`items` name clash.** `LazyColumn` and `LazyVerticalGrid` both export `items`; import the grid one
   as `gridItems` (`androidx.compose.foundation.lazy.grid.items as gridItems`).
 - **Multi-line commit messages** with embedded double quotes break shell parsing — use
