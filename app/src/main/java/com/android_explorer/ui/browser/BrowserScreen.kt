@@ -14,6 +14,7 @@ import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Archive
+import androidx.compose.material.icons.rounded.Checklist
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.ContentCut
@@ -136,6 +137,7 @@ fun BrowserScreen(
                     onPaste = viewModel::paste,
                     onUp = { if (!viewModel.navigateUp()) onExit() },
                     onSearch = onSearch,
+                    onSelect = viewModel::enterSelectionMode,
                     onToggleView = viewModel::toggleView,
                     onSort = viewModel::setSort,
                     onNewFolder = { showNewFolder = true },
@@ -225,7 +227,6 @@ fun BrowserScreen(
             onShare = if (!item.isDirectory) { { item.file?.let { FileOpener.share(context, it) }; contextItem = null } } else null,
             onSetWallpaper = if (item.isImage) { { item.file?.let { Wallpaper.setAsWallpaper(context, it) }; contextItem = null } } else null,
             onDelete = { deleteItems = listOf(item); contextItem = null },
-            onSelect = { viewModel.toggleSelect(item); contextItem = null },
             onDetails = { viewModel.showDetails(item); contextItem = null },
         )
     }
@@ -326,6 +327,7 @@ private fun BrowserBar(
     onPaste: () -> Unit,
     onUp: () -> Unit,
     onSearch: () -> Unit,
+    onSelect: () -> Unit,
     onToggleView: () -> Unit,
     onSort: (SortBy) -> Unit,
     onNewFolder: () -> Unit,
@@ -333,7 +335,6 @@ private fun BrowserBar(
     onToggleHidden: () -> Unit,
 ) {
     var menu by remember { mutableStateOf(false) }
-    var sortMenu by remember { mutableStateOf(false) }
     TopAppBar(
         navigationIcon = {
             IconButton(onClick = onUp) {
@@ -342,6 +343,8 @@ private fun BrowserBar(
         },
         title = { Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
         actions = {
+            // Keep the header lean: Paste (when relevant), Search, Select, then everything else
+            // (view mode + sort + create/hidden/theme) tucked into the overflow menu.
             if (showPaste) {
                 IconButton(onClick = onPaste) {
                     Icon(Icons.Rounded.ContentPaste, contentDescription = "Paste")
@@ -350,19 +353,25 @@ private fun BrowserBar(
             IconButton(onClick = onSearch) {
                 Icon(Icons.Rounded.Search, contentDescription = "Search")
             }
-            IconButton(onClick = onToggleView) {
-                Icon(
-                    if (grid) Icons.Rounded.ViewList else Icons.Rounded.GridView,
-                    contentDescription = if (grid) "List view" else "Grid view",
+            IconButton(onClick = onSelect) {
+                Icon(Icons.Rounded.Checklist, contentDescription = "Select")
+            }
+            IconButton(onClick = { menu = true }) {
+                Icon(Icons.Rounded.MoreVert, contentDescription = "More")
+            }
+            DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                DropdownMenuItem(
+                    text = { Text(if (grid) "List view" else "Grid view") },
+                    leadingIcon = {
+                        Icon(if (grid) Icons.Rounded.ViewList else Icons.Rounded.GridView, null)
+                    },
+                    onClick = { onToggleView(); menu = false },
                 )
-            }
-            IconButton(onClick = { sortMenu = true }) {
-                Icon(Icons.Rounded.Sort, contentDescription = "Sort")
-            }
-            DropdownMenu(expanded = sortMenu, onDismissRequest = { sortMenu = false }) {
+                HorizontalDivider()
                 SortBy.entries.forEach { s ->
                     DropdownMenuItem(
-                        text = { Text("By ${s.name.lowercase().replaceFirstChar { it.uppercase() }}") },
+                        text = { Text("Sort by ${s.name.lowercase().replaceFirstChar { it.uppercase() }}") },
+                        leadingIcon = { Icon(Icons.Rounded.Sort, null) },
                         trailingIcon = if (s == sortBy) {
                             {
                                 Icon(
@@ -371,14 +380,11 @@ private fun BrowserBar(
                                 )
                             }
                         } else null,
-                        onClick = { onSort(s); sortMenu = false },
+                        // Keep the menu open so tapping the active sort again just flips direction.
+                        onClick = { onSort(s) },
                     )
                 }
-            }
-            IconButton(onClick = { menu = true }) {
-                Icon(Icons.Rounded.MoreVert, contentDescription = "More")
-            }
-            DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                HorizontalDivider()
                 DropdownMenuItem(
                     text = { Text("New folder") },
                     leadingIcon = { Icon(Icons.Rounded.CreateNewFolder, null) },

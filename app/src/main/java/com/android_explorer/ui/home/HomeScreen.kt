@@ -7,30 +7,25 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material.icons.rounded.Extension
-import androidx.compose.material.icons.rounded.FolderOpen
-import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Movie
 import androidx.compose.material.icons.rounded.MusicNote
-import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -39,17 +34,15 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -59,6 +52,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.android_explorer.R
@@ -69,10 +63,11 @@ import com.android_explorer.ui.drive.DriveSection
 import com.android_explorer.ui.components.ArchiveContentsDialog
 import com.android_explorer.ui.components.ConfirmDialog
 import com.android_explorer.ui.components.FileDetailsDialog
-import com.android_explorer.ui.components.FileListItem
 import com.android_explorer.ui.components.PluginsDialog
 import com.android_explorer.ui.components.RecentsContextSheet
 import com.android_explorer.ui.components.StorageMeter
+import com.android_explorer.ui.components.colorFor
+import com.android_explorer.ui.components.iconFor
 import com.android_explorer.util.FileOpener
 import com.android_explorer.util.Wallpaper
 import com.android_explorer.ui.components.ThemeOverflowMenu
@@ -88,6 +83,7 @@ fun HomeScreen(
     onSearch: () -> Unit,
     onRequestAccess: () -> Unit,
     onOpenDrive: () -> Unit,
+    onOpenRecents: () -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val details by viewModel.details.collectAsStateWithLifecycle()
@@ -96,8 +92,6 @@ fun HomeScreen(
     var previewItem by remember { mutableStateOf<FileItem?>(null) }
     var deleteItem by remember { mutableStateOf<FileItem?>(null) }
     var showPlugins by remember { mutableStateOf(false) }
-    // Bottom-nav tab: 0 = Home (storage / browse / shortcuts / Drive), 1 = Recent (recent files).
-    var tab by rememberSaveable { mutableStateOf(0) }
 
     Scaffold(
         topBar = {
@@ -120,26 +114,6 @@ fun HomeScreen(
                 },
             )
         },
-        bottomBar = {
-            if (state.hasAccess) {
-                // Drop the bottom system-nav inset padding so the bar isn't padded extra-tall; the
-                // Scaffold already keeps content clear of the gesture area.
-                NavigationBar(windowInsets = WindowInsets(0, 0, 0, 0)) {
-                    NavigationBarItem(
-                        selected = tab == 0,
-                        onClick = { tab = 0 },
-                        icon = { Icon(Icons.Rounded.Home, contentDescription = null) },
-                        label = { Text("Home") },
-                    )
-                    NavigationBarItem(
-                        selected = tab == 1,
-                        onClick = { tab = 1 },
-                        icon = { Icon(Icons.Rounded.Schedule, contentDescription = null) },
-                        label = { Text("Recent") },
-                    )
-                }
-            }
-        },
     ) { padding ->
         if (!state.hasAccess) {
             AccessPrompt(Modifier.padding(padding), onRequestAccess)
@@ -151,35 +125,31 @@ fun HomeScreen(
             // Tap: archives open the contents preview (they have no default "open" app);
             // everything else defers to the host (editor for text, otherwise "open with").
             val onOpenRecent: (FileItem) -> Unit = { if (it.isArchive) previewItem = it else onOpenFile(it) }
-            when (tab) {
-                // Home tab: storage / browse / shortcuts / Drive. Scrollable so tall content (e.g. a
-                // connected Drive card) never clips. Landscape keeps the 50:50 two-column split.
-                0 -> if (landscape) {
-                    Row(Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 8.dp)) {
-                        StoragePane(
-                            state.volumes, onBrowse, onOpenFolder, onOpenCategory,
-                            Modifier.weight(0.5f).fillMaxHeight().verticalScroll(rememberScrollState()),
-                        )
-                        Spacer(Modifier.size(20.dp))
-                        Column(Modifier.weight(0.5f).fillMaxHeight().verticalScroll(rememberScrollState())) {
-                            DriveSection(onOpenDrive, Modifier.fillMaxWidth())
-                        }
-                    }
-                } else {
-                    Column(
-                        Modifier.fillMaxSize().verticalScroll(rememberScrollState())
-                            .padding(horizontal = 20.dp, vertical = 8.dp),
-                    ) {
+            // Scrollable so tall content (e.g. a connected Drive card) never clips. Landscape keeps
+            // the 50:50 split: Storage over the Recent strip on the left, Drive on the right.
+            if (landscape) {
+                Row(Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 8.dp)) {
+                    Column(Modifier.weight(0.5f).fillMaxHeight().verticalScroll(rememberScrollState())) {
                         StoragePane(state.volumes, onBrowse, onOpenFolder, onOpenCategory, Modifier.fillMaxWidth())
                         Spacer(Modifier.size(20.dp))
+                        RecentStrip(state.recents, onOpenRecent, onOpenRecents, Modifier.fillMaxWidth())
+                    }
+                    Spacer(Modifier.size(20.dp))
+                    Column(Modifier.weight(0.5f).fillMaxHeight().verticalScroll(rememberScrollState())) {
                         DriveSection(onOpenDrive, Modifier.fillMaxWidth())
                     }
                 }
-                // Recent tab: the recent-files list, full screen.
-                else -> RecentsPane(
-                    state.recents, onOpenRecent, { contextItem = it },
-                    Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 8.dp),
-                )
+            } else {
+                Column(
+                    Modifier.fillMaxSize().verticalScroll(rememberScrollState())
+                        .padding(horizontal = 20.dp, vertical = 8.dp),
+                ) {
+                    StoragePane(state.volumes, onBrowse, onOpenFolder, onOpenCategory, Modifier.fillMaxWidth())
+                    Spacer(Modifier.size(20.dp))
+                    DriveSection(onOpenDrive, Modifier.fillMaxWidth())
+                    Spacer(Modifier.size(20.dp))
+                    RecentStrip(state.recents, onOpenRecent, onOpenRecents, Modifier.fillMaxWidth())
+                }
             }
         }
     }
@@ -232,9 +202,11 @@ private fun StoragePane(
         SectionHeader("Storage")
         Spacer(Modifier.size(12.dp))
         Card(
-            // Solid container + a hairline outline so the panel stays visible on every theme —
+            // Tap the card itself to browse (the standalone "Browse files" button was removed to save
+            // space). Solid container + a hairline outline so the panel stays visible on every theme —
             // notably OLED, where the old translucent surfaceVariant tint collapsed into the
             // pure-black background and the card disappeared entirely.
+            onClick = onBrowse,
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
             elevation = CardDefaults.cardElevation(0.dp),
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
@@ -248,12 +220,6 @@ private fun StoragePane(
                     volumes.forEach { StorageMeter(it) }
                 }
             }
-        }
-        Spacer(Modifier.size(16.dp))
-        Button(onClick = onBrowse, modifier = Modifier.fillMaxWidth()) {
-            Icon(Icons.Rounded.FolderOpen, contentDescription = null)
-            Spacer(Modifier.size(8.dp))
-            Text("Browse files")
         }
         ShortcutsRow(onOpenFolder, onOpenCategory)
     }
@@ -336,35 +302,70 @@ private fun ShortcutChip(
     }
 }
 
+/**
+ * Home's compact recent-files row: a header with a "See all" affordance (opens the full grouped
+ * [RecentScreen]) and a horizontally-scrollable strip of the last 10 files. Tapping a card opens
+ * that file; long-press/full management lives in the "See all" view.
+ */
 @Composable
-private fun RecentsPane(
+private fun RecentStrip(
     recents: List<FileItem>,
     onOpen: (FileItem) -> Unit,
-    onLongClick: (FileItem) -> Unit,
+    onSeeAll: () -> Unit,
     modifier: Modifier,
 ) {
     Column(modifier) {
-        SectionHeader("Recent files")
-        Spacer(Modifier.size(8.dp))
-        if (recents.isEmpty()) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("No recent files", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        } else {
-            LazyColumn(
-                contentPadding = PaddingValues(bottom = 24.dp),
-                verticalArrangement = Arrangement.spacedBy(2.dp),
-            ) {
-                items(recents, key = { it.path }) { item ->
-                    FileListItem(
-                        item = item,
-                        selected = false,
-                        folderSize = null,
-                        onClick = { onOpen(item) },
-                        onLongClick = { onLongClick(item) },
-                    )
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            SectionHeader("Recent")
+            if (recents.isNotEmpty()) {
+                TextButton(onClick = onSeeAll) {
+                    Text("See all")
+                    Icon(Icons.Rounded.ChevronRight, contentDescription = null, modifier = Modifier.size(18.dp))
                 }
             }
+        }
+        Spacer(Modifier.size(6.dp))
+        if (recents.isEmpty()) {
+            Text(
+                "No recent files",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        } else {
+            Row(
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                recents.take(10).forEach { item -> RecentCard(item, onOpen) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RecentCard(item: FileItem, onOpen: (FileItem) -> Unit) {
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = colorFor(item).copy(alpha = 0.12f),
+        modifier = Modifier.clip(RoundedCornerShape(16.dp)).clickable { onOpen(item) },
+    ) {
+        Column(
+            Modifier.width(104.dp).padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Icon(iconFor(item), contentDescription = null, tint = colorFor(item), modifier = Modifier.size(28.dp))
+            Text(
+                item.name,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface,
+                minLines = 2,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
     }
 }

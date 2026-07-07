@@ -33,9 +33,11 @@ data class BrowserUiState(
     val folderSizes: Map<String, Long> = emptyMap(),
     // Mirrors the app-wide TransferClipboard (may hold local or Drive items from either browser).
     val hasClipboard: Boolean = false,
+    // Toggled on by the top-bar Select action; lets selection mode start with nothing selected.
+    val selectionMode: Boolean = false,
     val loading: Boolean = true,
 ) {
-    val inSelectionMode: Boolean get() = selected.isNotEmpty()
+    val inSelectionMode: Boolean get() = selectionMode || selected.isNotEmpty()
 }
 
 class BrowserViewModel(app: Application) : AndroidViewModel(app) {
@@ -114,8 +116,13 @@ class BrowserViewModel(app: Application) : AndroidViewModel(app) {
         _state.value = _state.value.copy(selected = sel)
     }
 
+    /** Enter selection mode from the top bar with nothing selected yet (row taps then toggle items). */
+    fun enterSelectionMode() {
+        _state.value = _state.value.copy(selectionMode = true)
+    }
+
     fun clearSelection() {
-        _state.value = _state.value.copy(selected = emptySet())
+        _state.value = _state.value.copy(selected = emptySet(), selectionMode = false)
     }
 
     fun selectedItems(): List<FileItem> {
@@ -176,8 +183,8 @@ class BrowserViewModel(app: Application) : AndroidViewModel(app) {
             _state.value = _state.value.copy(loading = true)
             // Handles local→local (copy/move) and Drive→local (download) via the shared engine.
             withContext(Dispatchers.IO) { TransferManager.paste(getApplication(), clip, NodeRef.Local(destDir)) }
-            // A cut is consumed; a copy stays available for repeated pastes.
-            if (clip.cut) clearClipboard()
+            // Clear after every paste (cut or copy) so the paste affordance doesn't linger.
+            clearClipboard()
             refresh()
         }
     }

@@ -14,7 +14,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Archive
-import androidx.compose.material.icons.rounded.Checklist
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.ContentCut
 import androidx.compose.material.icons.rounded.Delete
@@ -69,7 +68,6 @@ fun FileContextSheet(
     onShare: (() -> Unit)? = null,
     onSetWallpaper: (() -> Unit)? = null,
     onDelete: () -> Unit,
-    onSelect: () -> Unit,
     onDetails: () -> Unit,
 ) {
     val actions = buildList {
@@ -82,7 +80,6 @@ fun FileContextSheet(
         if (onSetWallpaper != null) add(ContextAction(Icons.Rounded.Wallpaper, "Set as wallpaper", onClick = onSetWallpaper))
         if (onViewContents != null) add(ContextAction(Icons.Rounded.Visibility, "View contents", onClick = onViewContents))
         if (onExtract != null) add(ContextAction(Icons.Rounded.Unarchive, "Extract here", onClick = onExtract))
-        add(ContextAction(Icons.Rounded.Checklist, "Select", onClick = onSelect))
         add(ContextAction(Icons.Rounded.Info, "Details", onClick = onDetails))
         add(ContextAction(Icons.Rounded.Delete, "Delete", destructive = true, onClick = onDelete))
     }

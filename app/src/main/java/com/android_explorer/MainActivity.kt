@@ -31,6 +31,7 @@ import com.android_explorer.ui.components.ArchiveProgressDialog
 import com.android_explorer.ui.editor.EditorScreen
 import com.android_explorer.ui.home.HomeScreen
 import com.android_explorer.ui.home.HomeViewModel
+import com.android_explorer.ui.home.RecentScreen
 import com.android_explorer.ui.pdf.PdfScreen
 import com.android_explorer.ui.search.SearchScreen
 import com.android_explorer.ui.theme.AndroidExplorerTheme
@@ -71,6 +72,8 @@ private fun AppRoot() {
     var pdfFile by remember { mutableStateOf<File?>(null) }
     // True while browsing Google Drive (a top-level destination, like the local browser).
     var driveBrowsing by rememberSaveable { mutableStateOf(false) }
+    // True while viewing the full recent-files list (reached from the Home "Recent" strip).
+    var showRecents by rememberSaveable { mutableStateOf(false) }
 
     // Shared open resolver, honouring the Plugins settings: built-in editor for text, built-in
     // reader for PDFs (each only when its plugin is enabled), otherwise the system "open with".
@@ -127,6 +130,11 @@ private fun AppRoot() {
                 onExit = { driveBrowsing = false },
                 onOpenFile = openFile,
             )
+            showRecents -> RecentScreen(
+                viewModel = homeViewModel,
+                onExit = { showRecents = false },
+                onOpenFile = openFile,
+            )
             else -> {
                 HomeScreen(
                     viewModel = homeViewModel,
@@ -137,6 +145,7 @@ private fun AppRoot() {
                     onSearch = { searching = true },
                     onRequestAccess = { context.startActivity(Permissions.allFilesAccessIntent(context)) },
                     onOpenDrive = { driveBrowsing = true },
+                    onOpenRecents = { showRecents = true },
                 )
             }
         }

@@ -18,8 +18,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Cloud
 import androidx.compose.material.icons.rounded.CloudDone
-import androidx.compose.material.icons.rounded.FolderOpen
-import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -89,7 +87,8 @@ fun rememberDriveConnector(): () -> Unit {
 /**
  * Home-screen "Google Drive" section. Disconnected: a single Connect card. Connected: the same
  * storage-usage card as local storage (Drive quota via [StorageMeter]) with the account + a
- * disconnect action, plus a "Browse Google Drive Files" button — mirroring the local Storage pane.
+ * disconnect action; tapping the card browses Drive (mirroring the local Storage pane, which is
+ * also tap-to-browse — the standalone browse buttons were removed to save space).
  */
 @Composable
 fun DriveSection(onOpenDrive: () -> Unit, modifier: Modifier = Modifier) {
@@ -113,6 +112,8 @@ fun DriveSection(onOpenDrive: () -> Unit, modifier: Modifier = Modifier) {
                 quota = runCatching { DriveRepository().storageQuota(context) }.getOrNull()
             }
             Card(
+                // Tap the card to browse Drive (the standalone button was removed to save space).
+                onClick = onOpenDrive,
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
                 elevation = CardDefaults.cardElevation(0.dp),
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
@@ -149,12 +150,6 @@ fun DriveSection(onOpenDrive: () -> Unit, modifier: Modifier = Modifier) {
                         TextButton(onClick = { DriveAuth.disconnect() }) { Text("Disconnect") }
                     }
                 }
-            }
-            Spacer(Modifier.size(16.dp))
-            Button(onClick = onOpenDrive, modifier = Modifier.fillMaxWidth()) {
-                Icon(Icons.Rounded.FolderOpen, contentDescription = null)
-                Spacer(Modifier.size(8.dp))
-                Text("Browse Google Drive Files")
             }
         }
     }

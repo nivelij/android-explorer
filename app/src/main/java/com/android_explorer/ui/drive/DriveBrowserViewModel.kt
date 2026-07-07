@@ -60,7 +60,8 @@ class DriveBrowserViewModel(app: Application) : AndroidViewModel(app) {
         val label = if (clip.cut) "Moving…" else if (clip.items.any { it.isRemote }) "Copying…" else "Uploading…"
         run(label) {
             TransferManager.paste(getApplication(), clip, NodeRef.Drive(currentFolderId, parentId = null, mimeType = ""))
-            if (clip.cut) TransferClipboard.clear()
+            // Clear after every paste (cut or copy) so the paste affordance doesn't linger.
+            TransferClipboard.clear()
         }
     }
 

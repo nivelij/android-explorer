@@ -52,8 +52,8 @@ the code looks right. Every change:
 ## Architecture & conventions
 
 - **No navigation library.** `AppRoot` in `MainActivity.kt` picks the current screen with a `when`
-  over remembered state (`editorFile`, `pdfFile`, `searching`, `categoryName`, `browsePath`), in
-  precedence order top→bottom. Use `rememberSaveable` for state that must survive process death;
+  over remembered state (`editorFile`, `pdfFile`, `searching`, `categoryName`, `browsePath`,
+  `driveBrowsing`, `showRecents`), in precedence order top→bottom. Use `rememberSaveable` for state that must survive process death;
   `editorFile`/`pdfFile` use plain `remember` (the Activity sets `configChanges`, so it isn't
   recreated on rotation). To add a screen: add a state var + a `when` branch + pass callbacks down.
 - **One open-file resolver.** `MainActivity`'s `openFile` lambda decides built-in editor vs built-in
@@ -76,8 +76,8 @@ the code looks right. Every change:
   on-device access token, no client id/secret in code; connected email persisted in prefs, `init()` in
   `App`), `DriveApi` (Drive REST v3 over OkHttp: `listFolder`/`download`/`accountEmail`/`storageQuota`,
   bearer-auth with a 401 refresh-retry), and `DriveRepository` (maps `DriveFile`→`FileItem`, caches
-  downloads). UI: `ui/drive/DriveSection` (Home connect card / connected storage-meter + "Browse Google
-  Drive Files"), `DriveBrowserScreen`+`DriveBrowserViewModel` (read-only folder-id nav stack reusing
+  downloads). UI: `ui/drive/DriveSection` (Home connect card / connected storage-meter card — **tap the
+  card to browse**, no separate button), `DriveBrowserScreen`+`DriveBrowserViewModel` (read-only folder-id nav stack reusing
   `FileListItem`; file tap downloads-to-cache then routes through the shared `openFile`). `AppRoot` gets
   a `driveBrowsing` branch.
 - **Cross-backend transfers (Drive writes).** `FileItem`s carry their backend (`NodeRef`), so one app-wide
@@ -107,12 +107,26 @@ the code looks right. Every change:
   trailing destructive **Delete** (always full-width) split off by a divider; **no "Close" button** (tap
   scrim / swipe / back). Each action's own callback clears the caller's menu state, so it self-dismisses.
   Actions are still conditional — e.g. `onShare` only for non-folders, `onSetWallpaper` only for images.
-  MainActivity's `configChanges` includes `orientation`, so rotating re-lays-out without recreating the
-  Activity.
-- **Home has a bottom `NavigationBar`** (`HomeScreen`, `tab` rememberSaveable): **Home** tab = Storage /
-  Browse / Shortcuts / Google Drive (scrollable; landscape keeps the 50:50 Storage|Drive split), **Recent**
-  tab (clock icon) = the recent-files list. The long-press context sheet + dialogs live at the `HomeScreen`
-  level so they work regardless of the active tab.
+  There is **no "Select" context action** — multi-select is entered from the browser top bar instead (see
+  below). MainActivity's `configChanges` includes `orientation`, so rotating re-lays-out without recreating
+  the Activity.
+- **Browser top bar** (`BrowserBar` in `BrowserScreen.kt`) stays lean: `[Paste?] [Search] [Select] [⋮]`.
+  The **Select** icon (`Icons.Rounded.Checklist`) calls `viewModel.enterSelectionMode()` — which sets a
+  `selectionMode` flag on `BrowserUiState` so selection mode can start with **nothing selected**
+  (`inSelectionMode = selectionMode || selected.isNotEmpty()`; `clearSelection()` resets both). The **⋮**
+  overflow holds everything else: the Grid/List toggle, the four Sort options (active one shows an up/down
+  arrow; tapping it again flips direction and **keeps the menu open**), New folder / New file / Toggle
+  hidden, and the Theme items.
+- **Home is a single scroll region** (`HomeScreen`, no bottom nav): Storage / Shortcuts / Google Drive,
+  then a horizontally-scrollable **`RecentStrip`** (last 10 files as compact `RecentCard`s; tap a card to
+  open the file). The Storage and Google Drive **cards are themselves clickable** (`Card(onClick=…)` →
+  `onBrowse` / `onOpenDrive`) — the old standalone "Browse files" / "Browse Google Drive Files" buttons
+  were removed to save space. Portrait stacks them in one `verticalScroll` `Column`; landscape keeps the 50:50
+  split — Storage **over** the Recent strip on the left, Drive on the right. The strip's **"See all"** opens
+  `RecentScreen` (`AppRoot`'s `showRecents` branch), a full list bucketed by modified date (Today / Yesterday
+  / This week / This month / Older via `java.time`, week start = default locale) reusing `FileListItem` +
+  `RecentsContextSheet`. The home long-press context sheet + dialogs live at the `HomeScreen`/`RecentScreen`
+  level.
 - **View modes.** `ViewMode { LIST, GRID }`; rows are `FileListItem` / `FileGridItem` in
   `FileEntry.kt`. The browser toggles; the Pictures/Video categories default to grid, others to list.
 - **Archives.** Long jobs run through the foreground `ArchiveService` (not inline), with progress on a
