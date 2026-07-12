@@ -66,7 +66,9 @@ private fun kindForExtension(ext: String): FileKind = when (ext) {
     "glslp", "glsl", "slangp", "slang", "cgp", "cg", "lpl" -> FileKind.CODE
     "txt", "md", "markdown", "log", "ini", "cfg", "conf", "properties", "env",
     // RetroArch overrides/options/remaps/core-info/cheats are key=value text.
-    "opt", "rmp", "info", "cht" -> FileKind.TEXT
+    "opt", "rmp", "info", "cht",
+    // GameNative / Daijishō frontend mapping files.
+    "steam", "steamappid" -> FileKind.TEXT
     "apk" -> FileKind.APK
     else -> FileKind.FILE
 }

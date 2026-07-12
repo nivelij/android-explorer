@@ -56,6 +56,9 @@ data class FileItem(
             // shader presets/sources, and playlists (.lpl is JSON) — all plain text.
             "opt", "rmp", "info", "cht", "lpl",
             "glslp", "glsl", "slangp", "slang", "cgp", "cg",
+            // GameNative / Daijishō frontend mapping files (plain text: a Steam appid or a
+            // "# Daijishou Player Template" body).
+            "steam", "steamappid",
         )
 
         fun from(file: File): FileItem = FileItem(
