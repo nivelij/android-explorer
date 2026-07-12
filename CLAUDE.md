@@ -76,8 +76,10 @@ the code looks right. Every change:
   on-device access token, no client id/secret in code; connected email persisted in prefs, `init()` in
   `App`), `DriveApi` (Drive REST v3 over OkHttp: `listFolder`/`download`/`accountEmail`/`storageQuota`,
   bearer-auth with a 401 refresh-retry), and `DriveRepository` (maps `DriveFile`→`FileItem`, caches
-  downloads). UI: `ui/drive/DriveSection` (Home connect card / connected storage-meter card — **tap the
-  card to browse**, no separate button), `DriveBrowserScreen`+`DriveBrowserViewModel` (read-only folder-id nav stack reusing
+  downloads). The whole feature is gated behind `DriveAuth.isSupported(context)` (a `GoogleApiAvailability`
+  certified-GMS check) — on uncertified devices `DriveSection` shows a non-interactive `UnsupportedCard`
+  instead of the connect card (see gotcha below). UI: `ui/drive/DriveSection` (Home connect card / connected
+  storage-meter card — **tap the card to browse**, no separate button), `DriveBrowserScreen`+`DriveBrowserViewModel` (read-only folder-id nav stack reusing
   `FileListItem`; file tap downloads-to-cache then routes through the shared `openFile`). `AppRoot` gets
   a `driveBrowsing` branch.
 - **Cross-backend transfers (Drive writes).** `FileItem`s carry their backend (`NodeRef`), so one app-wide
@@ -155,6 +157,15 @@ the code looks right. Every change:
   id/secret is embedded — the Authorization API identifies the app by package+SHA-1. Runtime OAuth can't be
   scripted via adb (needs a real Google account + interactive consent); verify sign-in by hand. The token is
   short-lived and re-fetched silently; a Drive call with no token surfaces "reconnect required".
+- **Drive needs *certified* Play services.** The Authorization API (and the legacy `GoogleAuthUtil`
+  path too) ships only in authentic, Play-certified GMS. On uncertified devices (e.g. AYN Odin2 handheld,
+  Android 13) both fail with `SERVICE_INVALID` / status 17 / "GooglePlayServices not available due to error 9"
+  — the connect tap did nothing because the failure listener swallowed it. There is **no in-app fix**: the
+  legacy fallback hits the same `ensurePlayServicesAvailable` gate; the only real alternatives are a GMS-free
+  browser OAuth (AppAuth + PKCE) or registering the device at google.com/android/uncertified. We chose to
+  **gate the feature**: `DriveAuth.isSupported()` probes `GoogleApiAvailability.isGooglePlayServicesAvailable()
+  == SUCCESS` and, when false, `DriveSection` renders the disabled `UnsupportedCard` (cloud-off + short
+  reason) instead of Connect. Certification is device-wide, so probe once (not per-tap).
 - **OLED + translucent surfaces.** The OLED theme forces `surface`/`background` to pure `#000000`, so a
   card painted with a *translucent* surface tint (e.g. `surfaceVariant.copy(alpha = …)`) collapses into
   the background and vanishes. For panels that must stay visible on every theme, use a **solid** container

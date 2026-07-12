@@ -18,6 +18,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Cloud
 import androidx.compose.material.icons.rounded.CloudDone
+import androidx.compose.material.icons.rounded.CloudOff
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -85,16 +86,20 @@ fun rememberDriveConnector(): () -> Unit {
 }
 
 /**
- * Home-screen "Google Drive" section. Disconnected: a single Connect card. Connected: the same
- * storage-usage card as local storage (Drive quota via [StorageMeter]) with the account + a
- * disconnect action; tapping the card browses Drive (mirroring the local Storage pane, which is
- * also tap-to-browse — the standalone browse buttons were removed to save space).
+ * Home-screen "Google Drive" section. Three states:
+ * - **Unsupported** (uncertified Google Play services): a disabled card explaining why — the
+ *   Authorization API can't run, so sign-in is not offered.
+ * - **Disconnected**: a single Connect card.
+ * - **Connected**: the same storage-usage card as local storage (Drive quota via [StorageMeter])
+ *   with the account + a disconnect action; tapping the card browses Drive.
  */
 @Composable
 fun DriveSection(onOpenDrive: () -> Unit, modifier: Modifier = Modifier) {
     val account by DriveAuth.account.collectAsStateWithLifecycle()
     val connect = rememberDriveConnector()
     val context = LocalContext.current
+    // Certification is a property of the device/GMS install, so probe once per composition.
+    val supported = remember { DriveAuth.isSupported(context) }
 
     Column(modifier) {
         Text(
@@ -104,50 +109,52 @@ fun DriveSection(onOpenDrive: () -> Unit, modifier: Modifier = Modifier) {
         )
         Spacer(Modifier.size(12.dp))
 
-        if (account == null) {
-            ConnectCard(onConnect = connect)
-        } else {
-            var quota by remember { mutableStateOf<VolumeStat?>(null) }
-            LaunchedEffect(account) {
-                quota = runCatching { DriveRepository().storageQuota(context) }.getOrNull()
-            }
-            Card(
-                // Tap the card to browse Drive (the standalone button was removed to save space).
-                onClick = onOpenDrive,
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
-                elevation = CardDefaults.cardElevation(0.dp),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                shape = RoundedCornerShape(20.dp),
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    val q = quota
-                    if (q != null) {
-                        StorageMeter(q)
-                    } else {
-                        Text(
-                            "Checking storage…",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            Icons.Rounded.CloudDone,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(18.dp),
-                        )
-                        Spacer(Modifier.size(8.dp))
-                        Text(
-                            account.orEmpty(),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f),
-                        )
-                        TextButton(onClick = { DriveAuth.disconnect() }) { Text("Disconnect") }
+        when {
+            !supported -> UnsupportedCard()
+            account == null -> ConnectCard(onConnect = connect)
+            else -> {
+                var quota by remember { mutableStateOf<VolumeStat?>(null) }
+                LaunchedEffect(account) {
+                    quota = runCatching { DriveRepository().storageQuota(context) }.getOrNull()
+                }
+                Card(
+                    // Tap the card to browse Drive (the standalone button was removed to save space).
+                    onClick = onOpenDrive,
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+                    elevation = CardDefaults.cardElevation(0.dp),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                    shape = RoundedCornerShape(20.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                        val q = quota
+                        if (q != null) {
+                            StorageMeter(q)
+                        } else {
+                            Text(
+                                "Checking storage…",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Rounded.CloudDone,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp),
+                            )
+                            Spacer(Modifier.size(8.dp))
+                            Text(
+                                account.orEmpty(),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f),
+                            )
+                            TextButton(onClick = { DriveAuth.disconnect() }) { Text("Disconnect") }
+                        }
                     }
                 }
             }
@@ -183,6 +190,45 @@ private fun ConnectCard(onConnect: () -> Unit) {
                 )
                 Text(
                     "Browse and upload to your Drive",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Shown when the device lacks certified Google Play services. The card is non-interactive and
+ * explains why Drive sign-in isn't available, so the disabled state isn't mistaken for a bug.
+ */
+@Composable
+private fun UnsupportedCard() {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+        elevation = CardDefaults.cardElevation(0.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        shape = RoundedCornerShape(20.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Icon(
+                Icons.Rounded.CloudOff,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Column(Modifier.weight(1f)) {
+                Text(
+                    "Drive unavailable on this device",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Text(
+                    "Sign-in needs certified Google Play services, which this device doesn't have.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

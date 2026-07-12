@@ -6,6 +6,8 @@ import android.content.SharedPreferences
 import com.google.android.gms.auth.api.identity.AuthorizationRequest
 import com.google.android.gms.auth.api.identity.AuthorizationResult
 import com.google.android.gms.auth.api.identity.Identity
+import com.google.android.gms.common.ConnectionResult
+import com.google.android.gms.common.GoogleApiAvailability
 import com.google.android.gms.common.api.Scope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -21,6 +23,10 @@ import kotlin.coroutines.resume
  * Access tokens are short-lived and are **not** persisted — we keep only the connected account email
  * and re-request a token on demand, which succeeds silently once the user has granted consent once.
  * [init] is called from [com.android_explorer.App.onCreate].
+ *
+ * The Authorization API ships only in *certified* Google Play services. On uncertified GMS builds
+ * (many China-market handhelds, e.g. the AYN Odin2) it fails with `SERVICE_INVALID` — so the whole
+ * Drive feature is gated behind [isSupported] and hidden/disabled where it can't work.
  */
 object DriveAuth {
     const val DRIVE_SCOPE = "https://www.googleapis.com/auth/drive"
@@ -45,6 +51,15 @@ object DriveAuth {
     }
 
     fun disconnect() = setConnected(null)
+
+    /**
+     * True when this device has authentic, certified Google Play services — the prerequisite for the
+     * Drive Authorization API. Uncertified GMS reports `SERVICE_INVALID` (error 9) here, so we treat
+     * anything other than [ConnectionResult.SUCCESS] as unsupported and disable the Drive UI.
+     */
+    fun isSupported(context: Context): Boolean =
+        GoogleApiAvailability.getInstance()
+            .isGooglePlayServicesAvailable(context.applicationContext) == ConnectionResult.SUCCESS
 
     /** The authorization request for the interactive connect flow (see the Home connect button). */
     fun authorizationRequest(): AuthorizationRequest =
