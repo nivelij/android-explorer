@@ -218,10 +218,12 @@ private fun StoragePane(
                     Text("No volumes found", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 } else {
                     volumes.forEach { volume ->
+                        // No rounded clip here: the free/total labels sit flush in the bottom
+                        // corners, so a corner radius shaves the leading/trailing glyphs. A plain
+                        // (rectangular) clickable keeps the tap target without clipping text.
                         Box(
                             Modifier
                                 .fillMaxWidth()
-                                .clip(RoundedCornerShape(12.dp))
                                 .clickable { onBrowse(volume) },
                         ) { StorageMeter(volume) }
                     }
