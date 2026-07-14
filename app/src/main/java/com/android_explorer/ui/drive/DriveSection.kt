@@ -113,9 +113,16 @@ fun DriveSection(onOpenDrive: () -> Unit, modifier: Modifier = Modifier) {
             !supported -> UnsupportedCard()
             account == null -> ConnectCard(onConnect = connect)
             else -> {
+                // Tri-state: null quota + !failed = still loading; quota set = OK; failed = the fetch
+                // completed but errored (token revoked/expired). The failed branch offers Reconnect so
+                // a dead session isn't a permanent "Checking storage…" dead end.
                 var quota by remember { mutableStateOf<VolumeStat?>(null) }
+                var failed by remember { mutableStateOf(false) }
                 LaunchedEffect(account) {
-                    quota = runCatching { DriveRepository().storageQuota(context) }.getOrNull()
+                    quota = null
+                    failed = false
+                    val q = runCatching { DriveRepository().storageQuota(context) }.getOrNull()
+                    if (q != null) quota = q else failed = true
                 }
                 Card(
                     // Tap the card to browse Drive (the standalone button was removed to save space).
@@ -128,10 +135,14 @@ fun DriveSection(onOpenDrive: () -> Unit, modifier: Modifier = Modifier) {
                 ) {
                     Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                         val q = quota
-                        if (q != null) {
-                            StorageMeter(q)
-                        } else {
-                            Text(
+                        when {
+                            q != null -> StorageMeter(q)
+                            failed -> Text(
+                                "Couldn't reach Google Drive — your access may have expired. Reconnect to sign in again.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            else -> Text(
                                 "Checking storage…",
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -139,9 +150,9 @@ fun DriveSection(onOpenDrive: () -> Unit, modifier: Modifier = Modifier) {
                         }
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(
-                                Icons.Rounded.CloudDone,
+                                if (failed) Icons.Rounded.CloudOff else Icons.Rounded.CloudDone,
                                 contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
+                                tint = if (failed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.size(18.dp),
                             )
                             Spacer(Modifier.size(8.dp))
@@ -153,6 +164,11 @@ fun DriveSection(onOpenDrive: () -> Unit, modifier: Modifier = Modifier) {
                                 overflow = TextOverflow.Ellipsis,
                                 modifier = Modifier.weight(1f),
                             )
+                            // Reconnect clears the session (null→email) then relaunches sign-in, so the
+                            // quota LaunchedEffect re-runs on success even if the same account returns.
+                            if (failed) {
+                                TextButton(onClick = { DriveAuth.disconnect(); connect() }) { Text("Reconnect") }
+                            }
                             TextButton(onClick = { DriveAuth.disconnect() }) { Text("Disconnect") }
                         }
                     }

@@ -79,7 +79,11 @@ the code looks right. Every change:
   downloads). The whole feature is gated behind `DriveAuth.isSupported(context)` (a `GoogleApiAvailability`
   certified-GMS check) — on uncertified devices `DriveSection` shows a non-interactive `UnsupportedCard`
   instead of the connect card (see gotcha below). UI: `ui/drive/DriveSection` (Home connect card / connected
-  storage-meter card — **tap the card to browse**, no separate button), `DriveBrowserScreen`+`DriveBrowserViewModel` (read-only folder-id nav stack reusing
+  storage-meter card — **tap the card to browse**, no separate button). The connected card is **tri-state**:
+  loading ("Checking storage…") → OK (`StorageMeter`) → **failed** (quota fetch errored = revoked/expired
+  token) which swaps in a "Couldn't reach Google Drive" message + a **Reconnect** action (clears then
+  re-launches sign-in, so the quota `LaunchedEffect(account)` re-fires even if the same account returns) so
+  a dead session isn't a permanent "Checking storage…" dead end. `DriveBrowserScreen`+`DriveBrowserViewModel` (read-only folder-id nav stack reusing
   `FileListItem`; file tap downloads-to-cache then routes through the shared `openFile`). `AppRoot` gets
   a `driveBrowsing` branch.
 - **Cross-backend transfers (Drive writes).** `FileItem`s carry their backend (`NodeRef`), so one app-wide
