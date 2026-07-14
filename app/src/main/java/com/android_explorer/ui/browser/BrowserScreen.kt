@@ -80,12 +80,17 @@ fun BrowserScreen(
     onOpenFile: (FileItem) -> Unit,
     onSearch: () -> Unit,
     startDir: java.io.File? = null,
+    // The volume root this session is bounded to (navigateUp stops here). Defaults to internal.
+    rootDir: java.io.File? = null,
+    // Title shown at the root (e.g. "Internal storage" or an SD card's label).
+    rootLabel: String? = null,
     viewModel: BrowserViewModel = viewModel(),
 ) {
-    // Open at the requested folder (e.g. a home-screen shortcut). Runs once on entry; the
-    // ViewModel is retained across sessions, so this also resets it when re-entering via Browse.
+    // Open at the requested folder (e.g. a home-screen shortcut or a volume mount). Runs once on
+    // entry; the ViewModel is retained across sessions, so this also resets it when re-entering.
     androidx.compose.runtime.LaunchedEffect(Unit) {
-        viewModel.navigateTo(startDir ?: viewModel.storageRoot)
+        val bound = rootDir ?: viewModel.storageRoot
+        viewModel.openAt(bound, startDir ?: bound)
     }
     val state by viewModel.state.collectAsStateWithLifecycle()
     val progress by ArchiveProgressBus.progress.collectAsStateWithLifecycle()
@@ -129,7 +134,7 @@ fun BrowserScreen(
                 )
             } else {
                 BrowserBar(
-                    title = if (viewModel.canGoUp) state.dir.name else "Internal storage",
+                    title = if (viewModel.canGoUp) state.dir.name else (rootLabel ?: "Internal storage"),
                     grid = state.view == ViewMode.GRID,
                     sortBy = state.sortBy,
                     ascending = state.ascending,

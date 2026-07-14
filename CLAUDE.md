@@ -121,9 +121,16 @@ the code looks right. Every change:
   hidden, and the Theme items.
 - **Home is a single scroll region** (`HomeScreen`, no bottom nav): Storage / Shortcuts / Google Drive,
   then a horizontally-scrollable **`RecentStrip`** (last 10 files as compact `RecentCard`s; tap a card to
-  open the file). The Storage and Google Drive **cards are themselves clickable** (`Card(onClick=…)` →
-  `onBrowse` / `onOpenDrive`) — the old standalone "Browse files" / "Browse Google Drive Files" buttons
-  were removed to save space. Portrait stacks them in one `verticalScroll` `Column`; landscape keeps the 50:50
+  open the file). The Google Drive **card is clickable** (`onOpenDrive`); the **Storage card lists one
+  meter per mounted volume** (`StorageRepository.volumes()` already enumerates internal + removable
+  SD/USB), and **each meter row is individually clickable** → `onBrowse(volume)` opens *that* volume.
+  The old standalone "Browse files" / "Browse Google Drive Files" buttons were removed to save space.
+  Multi-volume browsing: `onBrowse` carries the `VolumeStat`, so `AppRoot` sets `browsePath`/`browseRoot`
+  (= the volume mount, e.g. `/storage/<uuid>`) + `browseLabel`; `BrowserScreen(rootDir, rootLabel)` →
+  `BrowserViewModel.openAt(rootDir, startDir)` binds `navigateUp` to that volume root (so SD browsing
+  stops at the card, not `/storage`) and titles the root with the volume label. Internal shortcuts pass
+  `browseRoot = internal root`, keeping their up-navigation unchanged. New volumes appear via the
+  existing `ON_RESUME` `homeViewModel.refresh()` (re-reads `volumes()`); no live mount callback yet. Portrait stacks them in one `verticalScroll` `Column`; landscape keeps the 50:50
   split — Storage **over** the Recent strip on the left, Drive on the right. The strip's **"See all"** opens
   `RecentScreen` (`AppRoot`'s `showRecents` branch), a full list bucketed by modified date (Today / Yesterday
   / This week / This month / Older via `java.time`, week start = default locale) reusing `FileListItem` +

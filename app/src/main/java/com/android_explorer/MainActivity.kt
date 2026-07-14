@@ -24,6 +24,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.android_explorer.data.FileItem
 import com.android_explorer.data.MediaCategory
+import com.android_explorer.data.VolumeStat
 import com.android_explorer.ui.browser.BrowserScreen
 import com.android_explorer.ui.drive.DriveBrowserScreen
 import com.android_explorer.ui.category.CategoryScreen
@@ -61,6 +62,11 @@ private fun AppRoot() {
     // Non-null while browsing; holds the folder to open (storage root for "Browse files",
     // or a specific folder for a home-screen shortcut). rememberSaveable survives process death.
     var browsePath by rememberSaveable { mutableStateOf<String?>(null) }
+    // The volume mount the browse session is bounded to (navigateUp stops here) + its display
+    // label. For internal storage / shortcuts this stays the shared-storage root; browsing a
+    // removable volume sets both to that volume (see the Storage pane's per-volume tap).
+    var browseRoot by rememberSaveable { mutableStateOf<String?>(null) }
+    var browseLabel by rememberSaveable { mutableStateOf<String?>(null) }
     val rootPath = remember { android.os.Environment.getExternalStorageDirectory().absolutePath }
     // Non-null while viewing a device-wide media category (Documents/Pictures/Music/Video).
     // Stored as the enum name so rememberSaveable can persist it across process death.
@@ -113,7 +119,7 @@ private fun AppRoot() {
             searching -> SearchScreen(
                 onExit = { searching = false },
                 onOpenFile = openFile,
-                onOpenFolder = { browsePath = it.absolutePath; searching = false },
+                onOpenFolder = { browsePath = it.absolutePath; browseRoot = rootPath; browseLabel = null; searching = false },
             )
             category != null -> CategoryScreen(
                 category = category,
@@ -125,6 +131,8 @@ private fun AppRoot() {
                 onOpenFile = openFile,
                 onSearch = { searching = true },
                 startDir = File(browsing),
+                rootDir = browseRoot?.let { File(it) },
+                rootLabel = browseLabel,
             )
             driveBrowsing -> DriveBrowserScreen(
                 onExit = { driveBrowsing = false },
@@ -138,8 +146,8 @@ private fun AppRoot() {
             else -> {
                 HomeScreen(
                     viewModel = homeViewModel,
-                    onBrowse = { browsePath = rootPath },
-                    onOpenFolder = { browsePath = it.absolutePath },
+                    onBrowse = { vol -> browsePath = vol.path; browseRoot = vol.path; browseLabel = vol.name },
+                    onOpenFolder = { browsePath = it.absolutePath; browseRoot = rootPath; browseLabel = null },
                     onOpenCategory = { categoryName = it.name },
                     onOpenFile = openFile,
                     onSearch = { searching = true },

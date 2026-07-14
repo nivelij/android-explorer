@@ -43,7 +43,9 @@ data class BrowserUiState(
 class BrowserViewModel(app: Application) : AndroidViewModel(app) {
 
     private val repo = FileRepository()
-    private val root: File = repo.storageRoot
+    // The volume root the current browse session is bounded to (internal by default; set to a
+    // removable volume's mount when browsing an SD card / USB). navigateUp stops here.
+    private var root: File = repo.storageRoot
 
     private val _state = MutableStateFlow(BrowserUiState(dir = root))
     val state: StateFlow<BrowserUiState> = _state.asStateFlow()
@@ -97,6 +99,16 @@ class BrowserViewModel(app: Application) : AndroidViewModel(app) {
     fun navigateTo(dir: File) {
         _state.value = _state.value.copy(dir = dir, selected = emptySet())
         refresh()
+    }
+
+    /**
+     * Enter a browse session bounded to [rootDir] (the volume mount), opening at [startDir].
+     * For internal storage both are the shared-storage root; for a removable volume they are its
+     * `/storage/<uuid>` mount, so navigateUp stops at the volume instead of walking into `/storage`.
+     */
+    fun openAt(rootDir: File, startDir: File) {
+        root = rootDir
+        navigateTo(startDir)
     }
 
     /** Returns false when already at the storage root (caller may then exit the screen). */

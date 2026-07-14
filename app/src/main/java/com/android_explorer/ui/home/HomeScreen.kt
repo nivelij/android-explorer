@@ -76,7 +76,7 @@ import com.android_explorer.ui.components.ThemeOverflowMenu
 @Composable
 fun HomeScreen(
     viewModel: HomeViewModel,
-    onBrowse: () -> Unit,
+    onBrowse: (VolumeStat) -> Unit,
     onOpenFolder: (java.io.File) -> Unit,
     onOpenCategory: (MediaCategory) -> Unit,
     onOpenFile: (FileItem) -> Unit,
@@ -193,7 +193,7 @@ fun HomeScreen(
 @Composable
 private fun StoragePane(
     volumes: List<VolumeStat>,
-    onBrowse: () -> Unit,
+    onBrowse: (VolumeStat) -> Unit,
     onOpenFolder: (java.io.File) -> Unit,
     onOpenCategory: (MediaCategory) -> Unit,
     modifier: Modifier,
@@ -202,11 +202,11 @@ private fun StoragePane(
         SectionHeader("Storage")
         Spacer(Modifier.size(12.dp))
         Card(
-            // Tap the card itself to browse (the standalone "Browse files" button was removed to save
-            // space). Solid container + a hairline outline so the panel stays visible on every theme —
+            // Solid container + a hairline outline so the panel stays visible on every theme —
             // notably OLED, where the old translucent surfaceVariant tint collapsed into the
-            // pure-black background and the card disappeared entirely.
-            onClick = onBrowse,
+            // pure-black background and the card disappeared entirely. Each volume row is tapped
+            // individually to browse *that* volume (internal, SD card, USB), so a removable card
+            // gets its own entry point rather than sharing one card-wide action.
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
             elevation = CardDefaults.cardElevation(0.dp),
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
@@ -217,7 +217,14 @@ private fun StoragePane(
                 if (volumes.isEmpty()) {
                     Text("No volumes found", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 } else {
-                    volumes.forEach { StorageMeter(it) }
+                    volumes.forEach { volume ->
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .clickable { onBrowse(volume) },
+                        ) { StorageMeter(volume) }
+                    }
                 }
             }
         }
