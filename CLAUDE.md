@@ -57,9 +57,12 @@ the code looks right. Every change:
   `editorFile`/`pdfFile` use plain `remember` (the Activity sets `configChanges`, so it isn't
   recreated on rotation). To add a screen: add a state var + a `when` branch + pass callbacks down.
 - **One open-file resolver.** `MainActivity`'s `openFile` lambda decides built-in editor vs built-in
-  PDF reader (each gated by `PluginManager`) vs the system chooser (`FileOpener.open`). Every screen
-  routes file taps through this — do **not** re-implement open logic per screen. Folders open in the
-  browser; archives open the contents preview.
+  PDF reader (each gated by `PluginManager`) vs `.apk` → system installer (`FileOpener.installApk`,
+  which forces the `application/vnd.android.package-archive` MIME and skips the chooser — needs the
+  `REQUEST_INSTALL_PACKAGES` manifest perm; MimeTypeMap has no "apk" mapping so the generic path would
+  resolve to a wildcard type and never offer the installer) vs the system chooser (`FileOpener.open`).
+  Every screen routes file taps through this — do **not** re-implement open logic per screen. Folders
+  open in the browser; archives open the contents preview.
 - **State.** `AndroidViewModel` + `StateFlow` + `collectAsStateWithLifecycle`. ViewModels are
   Activity-scoped via `viewModel()` and reused, so screens call `load()`/`navigateTo()` in a
   `LaunchedEffect` on entry.

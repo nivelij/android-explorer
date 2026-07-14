@@ -89,6 +89,7 @@ private fun AppRoot() {
             when {
                 item.isEditableText && PluginManager.textEditorEnabled -> editorFile = f
                 item.isPdf && PluginManager.pdfReaderEnabled -> pdfFile = f
+                item.extension == "apk" -> FileOpener.installApk(context, f)
                 else -> FileOpener.open(context, f)
             }
         }

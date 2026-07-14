@@ -12,6 +12,10 @@
     <!-- Google Drive integration: network access for OAuth + the Drive REST API. -->
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!-- Launch the system package installer when a .apk is tapped (user still grants
+         "install unknown apps" for this source on first use). -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
     <!-- Foreground service for extraction/compression progress. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
