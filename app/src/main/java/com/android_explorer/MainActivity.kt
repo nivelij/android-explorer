@@ -31,6 +31,7 @@ import com.android_explorer.ui.drive.DriveBrowserScreen
 import com.android_explorer.ui.category.CategoryScreen
 import com.android_explorer.ui.components.ArchiveProgressDialog
 import com.android_explorer.ui.editor.EditorScreen
+import com.android_explorer.ui.gallery.GalleryScreen
 import com.android_explorer.ui.home.HomeScreen
 import com.android_explorer.ui.home.HomeViewModel
 import com.android_explorer.ui.home.RecentScreen
@@ -77,6 +78,7 @@ private fun AppRoot() {
     // Activity uses configChanges (no recreation on rotation), so remember survives rotation.
     var editorFile by remember { mutableStateOf<File?>(null) }
     var pdfFile by remember { mutableStateOf<File?>(null) }
+    var imageFile by remember { mutableStateOf<File?>(null) }
     // True while browsing Google Drive (a top-level destination, like the local browser).
     var driveBrowsing by rememberSaveable { mutableStateOf(false) }
     // True while viewing the full recent-files list (reached from the Home "Recent" strip).
@@ -92,6 +94,7 @@ private fun AppRoot() {
             when {
                 item.isEditableText && PluginManager.textEditorEnabled -> editorFile = f
                 item.isPdf && PluginManager.pdfReaderEnabled -> pdfFile = f
+                item.isImage && PluginManager.imageViewerEnabled -> imageFile = f
                 item.extension == "apk" -> FileOpener.installApk(context, f)
                 else -> FileOpener.open(context, f)
             }
@@ -115,11 +118,13 @@ private fun AppRoot() {
     Box(Modifier.fillMaxSize()) {
         val editing = editorFile
         val viewingPdf = pdfFile
+        val viewingImage = imageFile
         val browsing = browsePath
         val category = categoryName?.let { runCatching { MediaCategory.valueOf(it) }.getOrNull() }
         when {
             editing != null -> EditorScreen(file = editing, onClose = { editorFile = null })
             viewingPdf != null -> PdfScreen(file = viewingPdf, onClose = { pdfFile = null })
+            viewingImage != null -> GalleryScreen(file = viewingImage, onClose = { imageFile = null })
             searching -> SearchScreen(
                 onExit = { searching = false },
                 onOpenFile = openFile,

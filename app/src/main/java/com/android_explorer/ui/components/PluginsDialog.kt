@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.EditNote
 import androidx.compose.material.icons.rounded.Extension
+import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.PictureAsPdf
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
@@ -34,6 +35,7 @@ import com.android_explorer.util.PluginManager
 fun PluginsDialog(onDismiss: () -> Unit) {
     val editorOn by PluginManager.textEditor.collectAsStateWithLifecycle()
     val pdfOn by PluginManager.pdfReader.collectAsStateWithLifecycle()
+    val imageOn by PluginManager.imageViewer.collectAsStateWithLifecycle()
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -54,6 +56,13 @@ fun PluginsDialog(onDismiss: () -> Unit) {
                     subtitle = "Open PDFs in the built-in reader",
                     checked = pdfOn,
                     onChange = PluginManager::setPdfReader,
+                )
+                PluginRow(
+                    icon = Icons.Rounded.Image,
+                    title = "Image viewer",
+                    subtitle = "Open images in the built-in gallery",
+                    checked = imageOn,
+                    onChange = PluginManager::setImageViewer,
                 )
             }
         },
