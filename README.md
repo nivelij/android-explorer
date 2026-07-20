@@ -13,7 +13,8 @@ A minimalistic Android file explorer with a built-in archive engine. Kotlin + Je
 - **Theme control** — System default / Light / Dark / **Black (OLED, true #000000)**, chosen from the ⋮ overflow menu (also on the Home screen) and persisted. Defaults to following the device. Managed by `ThemeManager`.
 - **Create folders and files** — both available from the overflow menu.
 - **Long-press context menu** — a bottom sheet (single column in portrait, two columns in landscape) with Open, Copy, Cut, Rename, Compress (Zip), Share, Extract (archives), **Details**, and Delete.
-- **Multi-select** — a Select toggle in the browser toolbar enters selection mode (row taps then check items); the toolbar's overflow (⋮) menu holds the Grid/List toggle and Sort options to keep the header lean.
+- **Multi-select** — enter selection mode either from the Select toggle in the browser toolbar or by **long-pressing a row's icon** (Gmail-style; long-pressing the rest of the row still opens the context menu); then row taps check items. The icon **3D-flips** from its file/folder glyph to a checkmark as it's selected. The toolbar's overflow (⋮) menu holds the Grid/List toggle and Sort options to keep the header lean.
+- **Storage analyzer** — an **"Analyze storage"** row in the Home Storage card opens a disk-usage view: a segmented **breakdown bar** shows the folder's split at a glance, then a ranked list of cards details each child (folders **and** files together) by on-disk size, with a proportion bar and % of the folder, so the top consumers surface first. Colour does one job — a single accent on the bars — while ranking reads from length + order and identity from the icon + name. Tap a folder to drill in; toggle largest/smallest-first. Sizes are computed off-thread and cached per folder for the session.
 - **Clipboard** — Copy/Cut then **Paste** (paste icon appears in the toolbar and clears after a paste); recursive copy for folders, move-on-cut, auto-deduped names.
 - **Details popup** — type, size (+ item count for folders), full path, and created / modified / accessed timestamps + permissions (via NIO `BasicFileAttributes`).
 - **Adaptive orientation** — supports both portrait and landscape (follows the device's auto-rotate). The home screen switches between a two-pane layout (landscape) and a stacked layout (portrait); `configChanges` preserves state across rotation.
@@ -35,6 +36,7 @@ app/src/main/java/com/android_explorer/
   data/        FileRepository, StorageRepository, RecentFilesRepository, FileItem
   ui/home/     HomeScreen + HomeViewModel
   ui/browser/  BrowserScreen + BrowserViewModel
+  ui/analyzer/ StorageAnalyzerScreen + StorageAnalyzerViewModel (disk-usage by size)
   ui/components/ StorageMeter, FileEntry, dialogs, ArchiveProgressDialog
   ui/theme/    Material 3 theme (dynamic color)
   MainActivity.kt, App.kt

@@ -1,9 +1,9 @@
 # CLAUDE.md
 
-Working notes for Claude Code / agents in this repo. The user-facing feature list lives in
-`README.md` (which may lag the code — e.g. "Details" view is now "Grid", and the long-press context
-menu is always a bottom sheet: single column in portrait, a 2-column grid in landscape).
-This file covers how the code is put together and what's easy to get wrong.
+How to work in this repo: workflow, conventions, code style, and gotchas. **This is not a feature list
+or changelog** — user-facing features live in `README.md` and *what changed* lives in git history. When
+you add or change a feature, do **not** describe it here; only add something if it's a durable rule,
+convention, or pitfall worth enforcing next time.
 
 ## Stack
 
@@ -49,104 +49,59 @@ the code looks right. Every change:
 5. **Docs.** If behavior or architecture changed, update `README.md` / this file so they don't drift.
 6. **Commit only when the user asks** (see Committing).
 
-## Architecture & conventions
+## Codebase map
 
-- **No navigation library.** `AppRoot` in `MainActivity.kt` picks the current screen with a `when`
-  over remembered state (`editorFile`, `pdfFile`, `searching`, `categoryName`, `browsePath`,
-  `driveBrowsing`, `showRecents`), in precedence order top→bottom. Use `rememberSaveable` for state that must survive process death;
-  `editorFile`/`pdfFile` use plain `remember` (the Activity sets `configChanges`, so it isn't
-  recreated on rotation). To add a screen: add a state var + a `when` branch + pass callbacks down.
-- **One open-file resolver.** `MainActivity`'s `openFile` lambda decides built-in editor vs built-in
-  PDF reader (each gated by `PluginManager`) vs `.apk` → system installer (`FileOpener.installApk`,
-  which forces the `application/vnd.android.package-archive` MIME and skips the chooser — needs the
-  `REQUEST_INSTALL_PACKAGES` manifest perm; MimeTypeMap has no "apk" mapping so the generic path would
-  resolve to a wildcard type and never offer the installer) vs the system chooser (`FileOpener.open`).
-  Every screen routes file taps through this — do **not** re-implement open logic per screen. Folders
-  open in the browser; archives open the contents preview.
-- **State.** `AndroidViewModel` + `StateFlow` + `collectAsStateWithLifecycle`. ViewModels are
-  Activity-scoped via `viewModel()` and reused, so screens call `load()`/`navigateTo()` in a
-  `LaunchedEffect` on entry.
-- **Repositories** are plain classes: `FileRepository` (raw filesystem via all-files access, incl.
-  `search()`), `MediaStoreRepository` (device-wide category aggregation), `StorageRepository`,
-  `RecentFilesRepository`.
-- **`FileItem` is backend-agnostic.** It carries a `location: NodeRef` — `Local(File)` or
-  `Drive(id, parentId, mimeType)` — so the same rows/UI render either source. `file` is a **nullable**
-  `File?` (local only); local-only paths call `requireFile()`, and features that need a real `File`
-  (editor / PDF / "open with" / Share / wallpaper / archive engine) get one via a **temp download** for
-  Drive items. `path` is the stable id (`absolutePath` for local, `drive:<id>` for Drive); `extension`/
-  `isImage`/`isPdf` are name-derived (work for both).
-- **Google Drive** lives in `data/drive/`: `DriveAuth` (OAuth via Play Services **Authorization API** —
-  on-device access token, no client id/secret in code; connected email persisted in prefs, `init()` in
-  `App`), `DriveApi` (Drive REST v3 over OkHttp: `listFolder`/`download`/`accountEmail`/`storageQuota`,
-  bearer-auth with a 401 refresh-retry), and `DriveRepository` (maps `DriveFile`→`FileItem`, caches
-  downloads). The whole feature is gated behind `DriveAuth.isSupported(context)` (a `GoogleApiAvailability`
-  certified-GMS check) — on uncertified devices `DriveSection` shows a non-interactive `UnsupportedCard`
-  instead of the connect card (see gotcha below). UI: `ui/drive/DriveSection` (Home connect card / connected
-  storage-meter card — **tap the card to browse**, no separate button). The connected card is **tri-state**:
-  loading ("Checking storage…") → OK (`StorageMeter`) → **failed** (quota fetch errored = revoked/expired
-  token) which swaps in a "Couldn't reach Google Drive" message + a **Reconnect** action (clears then
-  re-launches sign-in, so the quota `LaunchedEffect(account)` re-fires even if the same account returns) so
-  a dead session isn't a permanent "Checking storage…" dead end. `DriveBrowserScreen`+`DriveBrowserViewModel` (read-only folder-id nav stack reusing
-  `FileListItem`; file tap downloads-to-cache then routes through the shared `openFile`). `AppRoot` gets
-  a `driveBrowsing` branch.
-- **Cross-backend transfers (Drive writes).** `FileItem`s carry their backend (`NodeRef`), so one app-wide
-  `TransferClipboard` (object) is shared by both browsers; `TransferManager.paste(context, clip, destNodeRef)`
-  dispatches by source→dest: local→local (FileRepository copy/move), **local→Drive = upload**, **Drive→local =
-  download**, Drive→Drive = server move (cut) or copy (recursive for folders). Local & Drive browsers both read
-  the shared clipboard (paste icon shows whenever it's non-empty) and paste into their current folder. Drive
-  write ops live in `DriveApi`/`DriveRepository` (upload multipart, createFolder, rename, move via
-  addParents/removeParents, **trash = the "Delete" action, recoverable**, copyFile). `DriveContextSheet` (in
-  `FileContextSheet.kt`, reusing the private `ContextMenu`) gives Drive rows Open/Copy/Cut/Rename/Delete; the
-  Drive top bar has New-folder + Paste. Long transfers show a busy overlay (no dedicated service yet).
-- **Settings are SharedPreferences singletons** (`object`s), **not** DataStore (that dependency is
-  present but unused): `ThemeManager`, `PluginManager`. Both are `init()`-ed in `App.onCreate`. Add a
-  new setting by mirroring the pattern: `MutableStateFlow` + prefs read/write + `init`.
-- **Icons.** `material-icons-extended`, `Icons.Rounded.*`. Central file-type icon + accent-color
-  mapping is `ui/components/FileIcons.kt` (`FileKind` enum, `kindOf`/`iconFor`/`colorFor`). Per-folder
-  drawable overrides go through `specialFolderIconRes` (e.g. Download → `ic_folder_download`).
-- **Context menus** live in `ui/components/FileContextSheet.kt`: `FileContextSheet` (browser) and
-  `RecentsContextSheet` (flat lists: home / category / search). Both keep the same public signature but
-  now build a `List<ContextAction>` (data, not composables) and hand it to a private `ContextMenu`,
-  which is **always a Material `ModalBottomSheet`** (drag handle, one consistent look). Only the action
-  *layout* adapts by `LocalConfiguration.orientation`: **portrait → a single column**, **landscape → a
-  2-column grid** (`normal.chunked(2)` + `Modifier.weight(1f)` cells, `Spacer(weight 1f)` for an odd last
-  item) — because the landscape sheet is short. The sheet content is wrapped in `verticalScroll` so a long
-  list (or the short landscape sheet) never clips. `dismissThen` plays the slide-out (`sheetState.hide()`)
-  before running the action. Both orientations share `MenuHeader` (type icon + name + `size · EXT`) and a
-  trailing destructive **Delete** (always full-width) split off by a divider; **no "Close" button** (tap
-  scrim / swipe / back). Each action's own callback clears the caller's menu state, so it self-dismisses.
-  Actions are still conditional — e.g. `onShare` only for non-folders, `onSetWallpaper` only for images.
-  There is **no "Select" context action** — multi-select is entered from the browser top bar instead (see
-  below). MainActivity's `configChanges` includes `orientation`, so rotating re-lays-out without recreating
-  the Activity.
-- **Browser top bar** (`BrowserBar` in `BrowserScreen.kt`) stays lean: `[Paste?] [Search] [Select] [⋮]`.
-  The **Select** icon (`Icons.Rounded.Checklist`) calls `viewModel.enterSelectionMode()` — which sets a
-  `selectionMode` flag on `BrowserUiState` so selection mode can start with **nothing selected**
-  (`inSelectionMode = selectionMode || selected.isNotEmpty()`; `clearSelection()` resets both). The **⋮**
-  overflow holds everything else: the Grid/List toggle, the four Sort options (active one shows an up/down
-  arrow; tapping it again flips direction and **keeps the menu open**), New folder / New file / Toggle
-  hidden, and the Theme items.
-- **Home is a single scroll region** (`HomeScreen`, no bottom nav): Storage / Shortcuts / Google Drive,
-  then a horizontally-scrollable **`RecentStrip`** (last 10 files as compact `RecentCard`s; tap a card to
-  open the file). The Google Drive **card is clickable** (`onOpenDrive`); the **Storage card lists one
-  meter per mounted volume** (`StorageRepository.volumes()` already enumerates internal + removable
-  SD/USB), and **each meter row is individually clickable** → `onBrowse(volume)` opens *that* volume.
-  The old standalone "Browse files" / "Browse Google Drive Files" buttons were removed to save space.
-  Multi-volume browsing: `onBrowse` carries the `VolumeStat`, so `AppRoot` sets `browsePath`/`browseRoot`
-  (= the volume mount, e.g. `/storage/<uuid>`) + `browseLabel`; `BrowserScreen(rootDir, rootLabel)` →
-  `BrowserViewModel.openAt(rootDir, startDir)` binds `navigateUp` to that volume root (so SD browsing
-  stops at the card, not `/storage`) and titles the root with the volume label. Internal shortcuts pass
-  `browseRoot = internal root`, keeping their up-navigation unchanged. New volumes appear via the
-  existing `ON_RESUME` `homeViewModel.refresh()` (re-reads `volumes()`); no live mount callback yet. Portrait stacks them in one `verticalScroll` `Column`; landscape keeps the 50:50
-  split — Storage **over** the Recent strip on the left, Drive on the right. The strip's **"See all"** opens
-  `RecentScreen` (`AppRoot`'s `showRecents` branch), a full list bucketed by modified date (Today / Yesterday
-  / This week / This month / Older via `java.time`, week start = default locale) reusing `FileListItem` +
-  `RecentsContextSheet`. The home long-press context sheet + dialogs live at the `HomeScreen`/`RecentScreen`
-  level.
-- **View modes.** `ViewMode { LIST, GRID }`; rows are `FileListItem` / `FileGridItem` in
-  `FileEntry.kt`. The browser toggles; the Pictures/Video categories default to grid, others to list.
-- **Archives.** Long jobs run through the foreground `ArchiveService` (not inline), with progress on a
-  shared `ArchiveProgressBus`. Engine is `ArchiveManager` (Commons Compress + junrar + xz + zip4j).
+- `MainActivity.kt` / `App.kt` — single Activity; `AppRoot` **is** the navigation (see below). `App`
+  wires the SharedPreferences singletons.
+- `data/` — repositories (plain classes) + models: `FileRepository` (filesystem incl. `search()`),
+  `MediaStoreRepository`, `StorageRepository`, `RecentFilesRepository`; `FileItem`/`NodeRef`;
+  `TransferClipboard`/`TransferManager` (copy/cut/paste).
+- `data/drive/` — Google Drive backend: `DriveAuth`, `DriveApi`, `DriveRepository`.
+- `ui/<feature>/` — one package per screen (`home`, `browser`, `analyzer`, `category`, `search`,
+  `editor`, `pdf`, `drive`), each a `…Screen` composable + a `…ViewModel`.
+- `ui/components/` — shared composables: rows (`FileEntry.kt`), menus (`FileContextSheet.kt`), icon +
+  accent mapping (`FileIcons.kt`), `StorageMeter`, dialogs.
+- `archive/` + `service/` — archive engine (`ArchiveManager`) run via the foreground `ArchiveService`.
+- `util/` — `FileOpener`, `Permissions`, `ThemeManager`, `PluginManager`, `Formatting`, `Wallpaper`.
+
+## Conventions (follow these)
+
+- **Navigation: no library.** `AppRoot` picks the screen with a `when` over remembered state, in
+  precedence order. **Add a screen** = add a state var + a `when` branch + thread callbacks down. Use
+  `rememberSaveable` for state that must survive process death.
+- **Open files through the one resolver.** Route every file tap through `MainActivity`'s `openFile`
+  lambda (built-in editor / PDF / `.apk` installer / system chooser). Never re-implement open logic per
+  screen.
+- **State:** `AndroidViewModel` + `StateFlow` + `collectAsStateWithLifecycle`. ViewModels are
+  Activity-scoped via `viewModel()` and **reused**, so screens (re)load in a `LaunchedEffect(Unit)` on
+  entry rather than in `init`.
+- **`FileItem` is backend-agnostic** — it carries `location: NodeRef` (`Local(File)` / `Drive(...)`).
+  `file` is **nullable** (local only): call `requireFile()` only on local-only paths, and for anything
+  needing a real `File` (editor/PDF/share/wallpaper/archive) obtain one via temp download for Drive
+  items. `path` is the stable list/selection id.
+- **Cross-backend copy/move** goes through the app-wide `TransferClipboard` + `TransferManager.paste(...)`,
+  which dispatches on source→dest (incl. upload/download). Don't branch on local-vs-Drive at call sites.
+- **Add a setting** = a SharedPreferences singleton `object` mirroring `ThemeManager`/`PluginManager`
+  (`MutableStateFlow` + prefs read/write), `init()`-ed in `App.onCreate`. (DataStore is a dependency but
+  is unused — don't reach for it.)
+- **Context-menu actions are data.** Build a `List<ContextAction>` and hand it to the shared `ContextMenu`
+  (`ModalBottomSheet`) in `FileContextSheet.kt`; don't hand-roll a bespoke menu per screen.
+- **Long-running work** runs in the foreground `ArchiveService` with progress on `ArchiveProgressBus` —
+  never block a screen inline.
+- **Icons** come from `FileIcons.kt` (`iconFor`/`colorFor`/`kindOf`); per-folder overrides via
+  `specialFolderIconRes`. Use `material-icons-extended` `Icons.Rounded.*`.
+
+## Code style
+
+- **Match the surrounding file.** Kotlin, 4-space indent, explicit imports (no wildcards), trailing
+  commas on multi-line argument lists.
+- **Compose:** screen-internal pieces are `private` composables; hoist state and pass callbacks down as
+  `onX: () -> Unit`; give reusable composables an optional `modifier: Modifier = Modifier`.
+- **Colour comes from `MaterialTheme.colorScheme`**, never hardcoded hex — the one sanctioned exception is
+  the file-type accent palette in `FileIcons.kt`. Everything must read on all four themes incl. OLED black
+  (see the translucent-surface gotcha).
+- **Comment the *why*,** not the what: short notes on non-obvious tradeoffs, matching the existing files.
+- **No new build warnings** — only the pre-existing `Icons.*` deprecations are tolerated.
 
 ## Gotchas
 
