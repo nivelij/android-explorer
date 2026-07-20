@@ -23,6 +23,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.ArrowDownward
 import androidx.compose.material.icons.rounded.ArrowUpward
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -102,6 +103,9 @@ fun StorageAnalyzerScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = viewModel::refresh) {
+                        Icon(Icons.Rounded.Refresh, contentDescription = "Refresh")
+                    }
                     IconButton(onClick = viewModel::toggleSort) {
                         Icon(
                             if (state.ascending) Icons.Rounded.ArrowUpward else Icons.Rounded.ArrowDownward,

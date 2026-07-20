@@ -47,10 +47,22 @@ class StorageAnalyzerViewModel(app: Application) : AndroidViewModel(app) {
     private val cache = HashMap<String, List<AnalyzerRow>>()
     private var scanJob: Job? = null
 
-    /** Bind the session to a volume [rootDir] and open at [startDir] (navigateUp stops at root). */
+    /**
+     * Bind the session to a volume [rootDir] and open at [startDir] (navigateUp stops at root).
+     * Clears the cache first: this VM is Activity-scoped and survives leaving/returning to the screen,
+     * so a fresh open must re-scan to reflect files deleted/added elsewhere (e.g. in the browser)
+     * rather than replay stale sizes.
+     */
     fun openAt(rootDir: File, startDir: File) {
         root = rootDir
+        cache.clear()
         navigateTo(startDir)
+    }
+
+    /** Re-scan the current folder from disk (drops all cached levels). Backs the top-bar Refresh action. */
+    fun refresh() {
+        cache.clear()
+        load(_state.value.dir)
     }
 
     fun open(item: FileItem) {
