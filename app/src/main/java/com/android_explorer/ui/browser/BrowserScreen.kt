@@ -166,6 +166,7 @@ fun BrowserScreen(
                     onLongClick = { item ->
                         if (state.inSelectionMode) viewModel.toggleSelect(item) else contextItem = item
                     },
+                    onIconLongClick = viewModel::selectFromIcon,
                 )
             }
         }
@@ -284,6 +285,7 @@ private fun FileListing(
     state: BrowserUiState,
     onClick: (FileItem) -> Unit,
     onLongClick: (FileItem) -> Unit,
+    onIconLongClick: (FileItem) -> Unit,
 ) {
     if (state.view == ViewMode.GRID) {
         LazyVerticalGrid(
@@ -298,6 +300,7 @@ private fun FileListing(
                     selected = item.path in state.selected,
                     onClick = { onClick(item) },
                     onLongClick = { onLongClick(item) },
+                    onIconLongClick = { onIconLongClick(item) },
                 )
             }
         }
@@ -315,6 +318,7 @@ private fun FileListing(
                     folderSize = folderSize,
                     onClick = { onClick(item) },
                     onLongClick = { onLongClick(item) },
+                    onIconLongClick = { onIconLongClick(item) },
                 )
             }
         }

@@ -133,6 +133,17 @@ class BrowserViewModel(app: Application) : AndroidViewModel(app) {
         _state.value = _state.value.copy(selectionMode = true)
     }
 
+    /**
+     * Long-press on a row's icon (Gmail-style): enters selection mode and *adds* the item (never
+     * deselects — that's what the in-mode row/icon tap is for), so the first long-press always starts
+     * a selection with that item checked.
+     */
+    fun selectFromIcon(item: FileItem) {
+        val sel = _state.value.selected.toMutableSet()
+        sel.add(item.path)
+        _state.value = _state.value.copy(selectionMode = true, selected = sel)
+    }
+
     fun clearSelection() {
         _state.value = _state.value.copy(selected = emptySet(), selectionMode = false)
     }
