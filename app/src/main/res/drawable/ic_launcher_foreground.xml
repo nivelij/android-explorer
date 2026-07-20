@@ -3,47 +3,19 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- Files-style: a centered folder (~60% of the tile) on the solid circular background. -->
+    <!-- Flat Windows-Explorer-style folder: light-gold body, darker-gold tab (slanted right edge),
+         blue arch. Three solid shapes, centred in the adaptive-icon safe zone. -->
 
-    <!-- Soft drop shadow, offset slightly down/right. -->
-    <group
-        android:pivotX="54"
-        android:pivotY="60"
-        android:scaleX="0.54"
-        android:scaleY="0.54"
-        android:translateX="2"
-        android:translateY="-2.5">
-        <path
-            android:fillColor="#33000000"
-            android:pathData="M0,24 a8,8 0 0 1 8,-8 h32 l10,10 h50 a8,8 0 0 1 8,8 v62 a8,8 0 0 1 -8,8 h-92 a8,8 0 0 1 -8,-8 z" />
-    </group>
-
-    <!-- Centered folder -->
-    <group
-        android:pivotX="54"
-        android:pivotY="60"
-        android:scaleX="0.54"
-        android:scaleY="0.54"
-        android:translateY="-6">
-        <!-- Folder back + tab (lighter yellow) -->
-        <path
-            android:fillColor="#FFE082"
-            android:pathData="M0,24 a8,8 0 0 1 8,-8 h32 l10,10 h50 a8,8 0 0 1 8,8 v16 h-108 z" />
-        <!-- Green accent on the tab -->
-        <path
-            android:fillColor="#7CB342"
-            android:pathData="M16,19 h13 v9 h-13 z" />
-        <!-- White line on the tab -->
-        <path
-            android:fillColor="#FFFFFF"
-            android:pathData="M33,20 h20 a2.5,2.5 0 0 1 0,5 h-20 a2.5,2.5 0 0 1 0,-5 z" />
-        <!-- Folder front (main yellow) -->
-        <path
-            android:fillColor="#FFD24D"
-            android:pathData="M0,40 h108 v56 a8,8 0 0 1 -8,8 h-92 a8,8 0 0 1 -8,-8 z" />
-        <!-- Blue arch (Windows-Explorer style) -->
-        <path
-            android:fillColor="#29B6F6"
-            android:pathData="M38,66 a8,8 0 0 1 8,-8 h16 a8,8 0 0 1 8,8 v32 h-12 v-18 h-8 v18 h-12 z" />
-    </group>
+    <!-- Folder body (light gold), sharp top-left so the tab sits flush above it. -->
+    <path
+        android:fillColor="#F2C85A"
+        android:pathData="M22,40 h59 a5,5 0 0 1 5,5 v34 a5,5 0 0 1 -5,5 h-54 a5,5 0 0 1 -5,-5 z" />
+    <!-- Tab (darker gold), top-left, stepping down to the body on its right. -->
+    <path
+        android:fillColor="#D6A03E"
+        android:pathData="M22,40 v-3 a5,5 0 0 1 5,-5 h21 l8,8 z" />
+    <!-- Front arch (blue): flat top, two legs, centred notch — the File-Explorer motif. -->
+    <path
+        android:fillColor="#4C90D9"
+        android:pathData="M40,80 v-20 a4,4 0 0 1 4,-4 h20 a4,4 0 0 1 4,4 v20 h-10 v-12 h-8 v12 z" />
 </vector>
