@@ -12,8 +12,11 @@ android {
         applicationId = "com.android_explorer"
         minSdk = 31
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        // Version is injected by CI from the release tag (`-PappVersionName` / `-PappVersionCode`, see
+        // .github/workflows/release.yml) so the built-in version — shown on Home via BuildConfig — always
+        // matches the GitHub release. The defaults track the current release for local/sideload builds.
+        versionCode = (project.findProperty("appVersionCode") as String?)?.toIntOrNull() ?: 10_200
+        versionName = (project.findProperty("appVersionName") as String?) ?: "1.2.0"
         vectorDrawables { useSupportLibrary = true }
     }
 

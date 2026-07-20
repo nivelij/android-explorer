@@ -25,6 +25,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.android_explorer.data.FileItem
 import com.android_explorer.data.MediaCategory
 import com.android_explorer.data.VolumeStat
+import com.android_explorer.ui.analyzer.StorageAnalyzerScreen
 import com.android_explorer.ui.browser.BrowserScreen
 import com.android_explorer.ui.drive.DriveBrowserScreen
 import com.android_explorer.ui.category.CategoryScreen
@@ -80,6 +81,8 @@ private fun AppRoot() {
     var driveBrowsing by rememberSaveable { mutableStateOf(false) }
     // True while viewing the full recent-files list (reached from the Home "Recent" strip).
     var showRecents by rememberSaveable { mutableStateOf(false) }
+    // True while the disk-usage analyzer is open (reached from the Home "Analyze" shortcut).
+    var analyzing by rememberSaveable { mutableStateOf(false) }
 
     // Shared open resolver, honouring the Plugins settings: built-in editor for text, built-in
     // reader for PDFs (each only when its plugin is enabled), otherwise the system "open with".
@@ -144,6 +147,10 @@ private fun AppRoot() {
                 onExit = { showRecents = false },
                 onOpenFile = openFile,
             )
+            analyzing -> StorageAnalyzerScreen(
+                onExit = { analyzing = false },
+                onOpenFile = openFile,
+            )
             else -> {
                 HomeScreen(
                     viewModel = homeViewModel,
@@ -155,6 +162,7 @@ private fun AppRoot() {
                     onRequestAccess = { context.startActivity(Permissions.allFilesAccessIntent(context)) },
                     onOpenDrive = { driveBrowsing = true },
                     onOpenRecents = { showRecents = true },
+                    onOpenAnalyzer = { analyzing = true },
                 )
             }
         }

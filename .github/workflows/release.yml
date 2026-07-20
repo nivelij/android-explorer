@@ -6,9 +6,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Release tag (e.g. v0.2)"
+        description: "Release tag (e.g. v1.2.0)"
         required: true
-        default: "v0.2"
+        default: "v1.2.0"
       prerelease:
         description: "Mark as a pre-release"
         type: boolean
@@ -45,7 +45,15 @@ jobs:
       - name: Build release APK
         run: |
           chmod +x gradlew
-          ./gradlew :app:assembleRelease --no-daemon --stacktrace
+          # Derive the app version from the release tag so the built-in version (shown on Home) matches
+          # the GitHub release: "v1.2.0" -> versionName 1.2.0, versionCode 1*10000+2*100+0 = 10200.
+          VNAME="${{ inputs.version }}"
+          VNAME="${VNAME#v}"
+          IFS='.' read -r MA MI PA <<< "$VNAME"
+          VCODE=$(( ${MA:-0} * 10000 + ${MI:-0} * 100 + ${PA:-0} ))
+          echo "Building versionName=$VNAME versionCode=$VCODE"
+          ./gradlew :app:assembleRelease --no-daemon --stacktrace \
+            -PappVersionName="$VNAME" -PappVersionCode="$VCODE"
 
       - name: Rename APK
         run: |

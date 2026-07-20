@@ -21,6 +21,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Description
+import androidx.compose.material.icons.rounded.DonutLarge
 import androidx.compose.material.icons.rounded.Extension
 import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.Lock
@@ -31,6 +32,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -52,9 +54,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.android_explorer.BuildConfig
 import com.android_explorer.R
 import com.android_explorer.data.FileItem
 import com.android_explorer.data.MediaCategory
@@ -84,6 +88,7 @@ fun HomeScreen(
     onRequestAccess: () -> Unit,
     onOpenDrive: () -> Unit,
     onOpenRecents: () -> Unit,
+    onOpenAnalyzer: () -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val details by viewModel.details.collectAsStateWithLifecycle()
@@ -130,9 +135,10 @@ fun HomeScreen(
             if (landscape) {
                 Row(Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 8.dp)) {
                     Column(Modifier.weight(0.5f).fillMaxHeight().verticalScroll(rememberScrollState())) {
-                        StoragePane(state.volumes, onBrowse, onOpenFolder, onOpenCategory, Modifier.fillMaxWidth())
+                        StoragePane(state.volumes, onBrowse, onOpenFolder, onOpenCategory, onOpenAnalyzer, Modifier.fillMaxWidth())
                         Spacer(Modifier.size(20.dp))
                         RecentStrip(state.recents, onOpenRecent, onOpenRecents, Modifier.fillMaxWidth())
+                        AppVersionFooter()
                     }
                     Spacer(Modifier.size(20.dp))
                     Column(Modifier.weight(0.5f).fillMaxHeight().verticalScroll(rememberScrollState())) {
@@ -144,11 +150,12 @@ fun HomeScreen(
                     Modifier.fillMaxSize().verticalScroll(rememberScrollState())
                         .padding(horizontal = 20.dp, vertical = 8.dp),
                 ) {
-                    StoragePane(state.volumes, onBrowse, onOpenFolder, onOpenCategory, Modifier.fillMaxWidth())
+                    StoragePane(state.volumes, onBrowse, onOpenFolder, onOpenCategory, onOpenAnalyzer, Modifier.fillMaxWidth())
                     Spacer(Modifier.size(20.dp))
                     DriveSection(onOpenDrive, Modifier.fillMaxWidth())
                     Spacer(Modifier.size(20.dp))
                     RecentStrip(state.recents, onOpenRecent, onOpenRecents, Modifier.fillMaxWidth())
+                    AppVersionFooter()
                 }
             }
         }
@@ -196,6 +203,7 @@ private fun StoragePane(
     onBrowse: (VolumeStat) -> Unit,
     onOpenFolder: (java.io.File) -> Unit,
     onOpenCategory: (MediaCategory) -> Unit,
+    onOpenAnalyzer: () -> Unit,
     modifier: Modifier,
 ) {
     Column(modifier) {
@@ -227,10 +235,49 @@ private fun StoragePane(
                                 .clickable { onBrowse(volume) },
                         ) { StorageMeter(volume) }
                     }
+                    // The meters answer "how full?"; this footer answers "with what?" — a dedicated
+                    // entry into the disk-usage analyzer, grouped with storage rather than lost among
+                    // the media shortcuts below.
+                    AnalyzeStorageRow(onOpenAnalyzer)
                 }
             }
         }
         ShortcutsRow(onOpenFolder, onOpenCategory)
+    }
+}
+
+/** Storage-card footer: a dedicated tap-through to the disk-usage analyzer. */
+@Composable
+private fun AnalyzeStorageRow(onOpenAnalyzer: () -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .clickable(onClick = onOpenAnalyzer)
+                .padding(vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                Icons.Rounded.DonutLarge,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(22.dp),
+            )
+            Spacer(Modifier.size(14.dp))
+            Text(
+                "Analyze storage",
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.weight(1f),
+            )
+            Icon(
+                Icons.Rounded.ChevronRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }
 
@@ -377,6 +424,18 @@ private fun RecentCard(item: FileItem, onOpen: (FileItem) -> Unit) {
             )
         }
     }
+}
+
+/** Low-emphasis app-version stamp at the foot of Home; tracks the GitHub release tag (see build.gradle). */
+@Composable
+private fun AppVersionFooter(modifier: Modifier = Modifier) {
+    Text(
+        text = "v${BuildConfig.VERSION_NAME}",
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        textAlign = TextAlign.Center,
+        modifier = modifier.fillMaxWidth().padding(top = 24.dp, bottom = 8.dp),
+    )
 }
 
 @Composable
