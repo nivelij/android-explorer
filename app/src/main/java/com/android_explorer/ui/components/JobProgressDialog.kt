@@ -30,15 +30,15 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.android_explorer.archive.ArchiveProgress
-import com.android_explorer.archive.ArchiveProgressBus
-import com.android_explorer.service.ArchiveService
+import com.android_explorer.job.JobProgress
+import com.android_explorer.job.JobProgressBus
+import com.android_explorer.service.FileJobService
 import com.android_explorer.util.Formatting
 
 /** Observes the shared progress bus and shows a Material dialog while a job runs or has just finished. */
 @Composable
-fun ArchiveProgressDialog() {
-    val progress by ArchiveProgressBus.progress.collectAsStateWithLifecycle()
+fun JobProgressDialog() {
+    val progress by JobProgressBus.progress.collectAsStateWithLifecycle()
     val p = progress ?: return
     val context = LocalContext.current
 
@@ -48,26 +48,26 @@ fun ArchiveProgressDialog() {
     }
 
     AlertDialog(
-        onDismissRequest = { if (p.finished) ArchiveProgressBus.clear() },
+        onDismissRequest = { if (p.finished) JobProgressBus.clear() },
         title = { Text(dialogTitle(p)) },
         text = {
             if (p.finished) FinishedBody(p) else RunningBody(p)
         },
         confirmButton = {
             if (p.finished) {
-                TextButton(onClick = { ArchiveProgressBus.clear() }) { Text("Done") }
+                TextButton(onClick = { JobProgressBus.clear() }) { Text("Done") }
             } else {
-                TextButton(onClick = { ArchiveService.cancel(context) }) { Text("Cancel") }
+                TextButton(onClick = { FileJobService.cancel(context) }) { Text("Cancel") }
             }
         },
     )
 }
 
 @Composable
-private fun PasswordDialog(p: ArchiveProgress, context: android.content.Context) {
+private fun PasswordDialog(p: JobProgress, context: android.content.Context) {
     var password by remember(p.jobId) { mutableStateOf("") }
     AlertDialog(
-        onDismissRequest = { ArchiveProgressBus.clear() },
+        onDismissRequest = { JobProgressBus.clear() },
         title = { Text("Password required") },
         text = {
             Column(Modifier.fillMaxWidth()) {
@@ -99,24 +99,28 @@ private fun PasswordDialog(p: ArchiveProgress, context: android.content.Context)
         confirmButton = {
             TextButton(
                 enabled = password.isNotBlank() && p.sourcePath != null && p.destPath != null,
-                onClick = { ArchiveService.extract(context, p.sourcePath!!, p.destPath!!, password) },
+                onClick = { FileJobService.extract(context, p.sourcePath!!, p.destPath!!, password) },
             ) { Text("Extract") }
         },
-        dismissButton = { TextButton(onClick = { ArchiveProgressBus.clear() }) { Text("Cancel") } },
+        dismissButton = { TextButton(onClick = { JobProgressBus.clear() }) { Text("Cancel") } },
     )
 }
 
-private fun dialogTitle(p: ArchiveProgress): String = when (p.state) {
-    ArchiveProgress.State.RUNNING -> p.title
-    ArchiveProgress.State.SUCCESS ->
-        if (p.kind == ArchiveProgress.Kind.EXTRACT) "Extraction complete" else "Archive created"
-    ArchiveProgress.State.ERROR -> "Operation failed"
-    ArchiveProgress.State.CANCELLED -> "Cancelled"
-    ArchiveProgress.State.NEEDS_PASSWORD -> "Password required"
+private fun dialogTitle(p: JobProgress): String = when (p.state) {
+    JobProgress.State.RUNNING -> p.title
+    JobProgress.State.SUCCESS -> when (p.kind) {
+        JobProgress.Kind.EXTRACT -> "Extraction complete"
+        JobProgress.Kind.COMPRESS -> "Archive created"
+        JobProgress.Kind.COPY -> "Copy complete"
+        JobProgress.Kind.MOVE -> "Move complete"
+    }
+    JobProgress.State.ERROR -> "Operation failed"
+    JobProgress.State.CANCELLED -> "Cancelled"
+    JobProgress.State.NEEDS_PASSWORD -> "Password required"
 }
 
 @Composable
-private fun RunningBody(p: ArchiveProgress) {
+private fun RunningBody(p: JobProgress) {
     Column(Modifier.fillMaxWidth()) {
         if (p.indeterminate) {
             LinearProgressIndicator(
@@ -146,7 +150,7 @@ private fun RunningBody(p: ArchiveProgress) {
     }
 }
 
-private fun statusLine(p: ArchiveProgress): String {
+private fun statusLine(p: JobProgress): String {
     val pct = if (!p.indeterminate) "${(p.fraction * 100).toInt()}%  •  " else ""
     val bytes = if (p.totalBytes > 0) {
         "${Formatting.bytes(p.processedBytes)} / ${Formatting.bytes(p.totalBytes)}"
@@ -158,29 +162,38 @@ private fun statusLine(p: ArchiveProgress): String {
 }
 
 @Composable
-private fun FinishedBody(p: ArchiveProgress) {
+private fun FinishedBody(p: JobProgress) {
     val (icon, tint, message) = when (p.state) {
-        ArchiveProgress.State.SUCCESS -> Triple(
+        JobProgress.State.SUCCESS -> Triple(
             Icons.Rounded.CheckCircle,
             MaterialTheme.colorScheme.primary,
             p.outputPath?.let { "Saved to:\n$it" } ?: "Completed successfully.",
         )
-        ArchiveProgress.State.ERROR -> Triple(
+        JobProgress.State.ERROR -> Triple(
             Icons.Rounded.Error,
             MaterialTheme.colorScheme.error,
             p.error ?: "Unknown error.",
         )
-        ArchiveProgress.State.CANCELLED -> Triple(
+        JobProgress.State.CANCELLED -> Triple(
             Icons.Rounded.Info,
             MaterialTheme.colorScheme.onSurfaceVariant,
             "The operation was cancelled.",
         )
-        ArchiveProgress.State.RUNNING, ArchiveProgress.State.NEEDS_PASSWORD ->
+        JobProgress.State.RUNNING, JobProgress.State.NEEDS_PASSWORD ->
             Triple(Icons.Rounded.Info, MaterialTheme.colorScheme.primary, "")
     }
     Column(Modifier.fillMaxWidth()) {
         Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(36.dp))
         Spacer(Modifier.size(10.dp))
         Text(message, style = MaterialTheme.typography.bodyMedium)
+        // e.g. "2 items skipped" after a paste, or "12 of 40 files copied" after a cancel.
+        p.note?.let {
+            Spacer(Modifier.size(6.dp))
+            Text(
+                it,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }

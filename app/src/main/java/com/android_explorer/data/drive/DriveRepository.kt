@@ -60,34 +60,61 @@ class DriveRepository {
         DriveApi.move(context, ref.id, addParent = newParentId, removeParent = ref.parentId ?: "root")
     }
 
-    /** Drive→Drive copy (recursive for folders, since Drive's copy API is file-only). */
-    suspend fun copyInto(context: Context, item: FileItem, destParentId: String) {
+    /**
+     * Drive→Drive copy (recursive for folders, since Drive's copy API is file-only).
+     *
+     * [onFile] fires after each leaf completes, with its name and byte size. Progress is per-file:
+     * intra-file byte counts would mean wrapping the HTTP layer. Throwing from [onFile] cancels the
+     * transfer between files.
+     */
+    suspend fun copyInto(
+        context: Context,
+        item: FileItem,
+        destParentId: String,
+        onFile: (String, Long) -> Unit = { _, _ -> },
+    ) {
         if (item.isDirectory) {
             val newId = DriveApi.createFolder(context, item.name, destParentId)
-            list(context, item.driveRef.id).forEach { copyInto(context, it, newId) }
+            list(context, item.driveRef.id).forEach { copyInto(context, it, newId, onFile) }
         } else {
             DriveApi.copyFile(context, item.driveRef.id, destParentId)
+            onFile(item.name, item.size)
         }
     }
 
-    /** Upload a local file/folder into a Drive folder (recursive for folders). */
-    suspend fun uploadInto(context: Context, local: File, parentId: String) {
+    /** Upload a local file/folder into a Drive folder (recursive for folders). See [copyInto] for [onFile]. */
+    suspend fun uploadInto(
+        context: Context,
+        local: File,
+        parentId: String,
+        onFile: (String, Long) -> Unit = { _, _ -> },
+    ) {
         if (local.isDirectory) {
             val sub = DriveApi.createFolder(context, local.name, parentId)
-            local.listFiles()?.forEach { uploadInto(context, it, sub) }
+            local.listFiles()?.forEach { uploadInto(context, it, sub, onFile) }
         } else {
             DriveApi.uploadFile(context, local, parentId)
+            onFile(local.name, local.length())
         }
     }
 
-    /** Download a Drive file/folder into a local directory (recursive for folders); returns the new local File. */
-    suspend fun downloadInto(context: Context, item: FileItem, destDir: File): File {
+    /**
+     * Download a Drive file/folder into a local directory (recursive for folders); returns the new
+     * local File. See [copyInto] for [onFile].
+     */
+    suspend fun downloadInto(
+        context: Context,
+        item: FileItem,
+        destDir: File,
+        onFile: (String, Long) -> Unit = { _, _ -> },
+    ): File {
         val target = uniqueChild(destDir, item.name)
         if (item.isDirectory) {
             target.mkdirs()
-            list(context, item.driveRef.id).forEach { downloadInto(context, it, target) }
+            list(context, item.driveRef.id).forEach { downloadInto(context, it, target, onFile) }
         } else {
             DriveApi.download(context, item.driveRef.id, target)
+            onFile(item.name, target.length())
         }
         return target
     }

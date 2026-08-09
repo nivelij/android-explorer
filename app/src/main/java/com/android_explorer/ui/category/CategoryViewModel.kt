@@ -8,7 +8,7 @@ import com.android_explorer.data.FileItem
 import com.android_explorer.data.FileRepository
 import com.android_explorer.data.MediaCategory
 import com.android_explorer.data.MediaStoreRepository
-import com.android_explorer.service.ArchiveService
+import com.android_explorer.service.FileJobService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -56,7 +56,7 @@ class CategoryViewModel(app: Application) : AndroidViewModel(app) {
     fun extract(item: FileItem) {
         val f = item.file ?: return
         val dest = fileRepo.extractionTargetFor(f)
-        ArchiveService.extract(getApplication(), f.absolutePath, dest.absolutePath)
+        FileJobService.extract(getApplication(), f.absolutePath, dest.absolutePath)
     }
 
     fun showDetails(item: FileItem) {

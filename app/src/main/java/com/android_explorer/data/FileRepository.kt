@@ -160,7 +160,12 @@ class FileRepository {
         return d == s || d.startsWith(s + File.separator)
     }
 
-    private fun uniqueTarget(destDir: File, name: String): File {
+    /**
+     * A non-clashing target for [name] in [destDir]. Callers doing a recursive transfer must apply
+     * this once, at the top level only — deduping inside the tree would rename files *within* the
+     * copied folder.
+     */
+    fun uniqueTarget(destDir: File, name: String): File {
         var target = File(destDir, name)
         if (!target.exists()) return target
         val hasExt = name.contains('.') && !name.startsWith('.')

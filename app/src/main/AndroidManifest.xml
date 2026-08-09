@@ -48,7 +48,7 @@
         </activity>
 
         <service
-            android:name=".service.ArchiveService"
+            android:name=".service.FileJobService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
 

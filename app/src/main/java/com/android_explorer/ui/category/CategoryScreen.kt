@@ -33,10 +33,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.android_explorer.archive.ArchiveProgress
-import com.android_explorer.archive.ArchiveProgressBus
 import com.android_explorer.data.FileItem
 import com.android_explorer.data.MediaCategory
+import com.android_explorer.job.JobProgressBus
 import com.android_explorer.ui.components.ArchiveContentsDialog
 import com.android_explorer.ui.components.ConfirmDialog
 import com.android_explorer.ui.components.FileDetailsDialog
@@ -63,7 +62,6 @@ fun CategoryScreen(
     LaunchedEffect(category) { viewModel.load(category) }
     val state by viewModel.state.collectAsStateWithLifecycle()
     val details by viewModel.details.collectAsStateWithLifecycle()
-    val progress by ArchiveProgressBus.progress.collectAsStateWithLifecycle()
     val root = remember { android.os.Environment.getExternalStorageDirectory().absolutePath }
     val context = androidx.compose.ui.platform.LocalContext.current
 
@@ -71,9 +69,9 @@ fun CategoryScreen(
     var previewItem by remember { mutableStateOf<FileItem?>(null) }
     var deleteItem by remember { mutableStateOf<FileItem?>(null) }
 
-    // Re-query after a successful extract (a new folder of files may now exist).
-    LaunchedEffect(progress?.state) {
-        if (progress?.state == ArchiveProgress.State.SUCCESS) viewModel.refresh()
+    // Re-query after any file job ends (a new folder of files may now exist).
+    LaunchedEffect(Unit) {
+        JobProgressBus.completions.collect { viewModel.refresh() }
     }
     BackHandler { onExit() }
 

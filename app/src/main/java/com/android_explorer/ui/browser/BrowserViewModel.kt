@@ -10,9 +10,8 @@ import com.android_explorer.data.FileRepository
 import com.android_explorer.data.NodeRef
 import com.android_explorer.data.SortBy
 import com.android_explorer.data.TransferClipboard
-import com.android_explorer.data.TransferManager
 import com.android_explorer.data.ViewMode
-import com.android_explorer.service.ArchiveService
+import com.android_explorer.service.FileJobService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -201,15 +200,10 @@ class BrowserViewModel(app: Application) : AndroidViewModel(app) {
 
     fun paste() {
         val clip = TransferClipboard.current ?: return
-        val destDir = _state.value.dir
-        viewModelScope.launch {
-            _state.value = _state.value.copy(loading = true)
-            // Handles local→local (copy/move) and Drive→local (download) via the shared engine.
-            withContext(Dispatchers.IO) { TransferManager.paste(getApplication(), clip, NodeRef.Local(destDir)) }
-            // Clear after every paste (cut or copy) so the paste affordance doesn't linger.
-            clearClipboard()
-            refresh()
-        }
+        // Runs in the foreground service so a large paste survives navigating away and reports real
+        // progress. The service owns the clip from here: it clears the clipboard and the screen
+        // refreshes off JobProgressBus.completions.
+        FileJobService.paste(getApplication(), clip, NodeRef.Local(_state.value.dir))
     }
 
     fun createFolder(name: String) {
@@ -229,14 +223,14 @@ class BrowserViewModel(app: Application) : AndroidViewModel(app) {
     fun extract(item: FileItem) {
         val f = item.file ?: return
         val dest = repo.extractionTargetFor(f)
-        ArchiveService.extract(getApplication(), f.absolutePath, dest.absolutePath)
+        FileJobService.extract(getApplication(), f.absolutePath, dest.absolutePath)
     }
 
     /** Extract [item] into a user-chosen [destParent] (a folder named after the archive is created). */
     fun extractTo(item: FileItem, destParent: File) {
         val f = item.file ?: return
         val dest = repo.extractionTargetIn(destParent, f)
-        ArchiveService.extract(getApplication(), f.absolutePath, dest.absolutePath)
+        FileJobService.extract(getApplication(), f.absolutePath, dest.absolutePath)
     }
 
     fun subFolders(dir: File): List<File> = repo.subFolders(dir)
@@ -246,7 +240,7 @@ class BrowserViewModel(app: Application) : AndroidViewModel(app) {
     fun compress(items: List<FileItem>, fileName: String, type: ArchiveType) {
         if (items.isEmpty()) return
         val dest = File(_state.value.dir, fileName)
-        ArchiveService.compress(getApplication(), items.map { it.path }, dest.absolutePath, type)
+        FileJobService.compress(getApplication(), items.map { it.path }, dest.absolutePath, type)
         clearSelection()
     }
 

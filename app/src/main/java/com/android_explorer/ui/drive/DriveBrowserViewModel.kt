@@ -6,8 +6,8 @@ import androidx.lifecycle.viewModelScope
 import com.android_explorer.data.FileItem
 import com.android_explorer.data.NodeRef
 import com.android_explorer.data.TransferClipboard
-import com.android_explorer.data.TransferManager
 import com.android_explorer.data.drive.DriveRepository
+import com.android_explorer.service.FileJobService
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -57,12 +57,13 @@ class DriveBrowserViewModel(app: Application) : AndroidViewModel(app) {
 
     fun paste() {
         val clip = TransferClipboard.current ?: return
-        val label = if (clip.cut) "Moving…" else if (clip.items.any { it.isRemote }) "Copying…" else "Uploading…"
-        run(label) {
-            TransferManager.paste(getApplication(), clip, NodeRef.Drive(currentFolderId, parentId = null, mimeType = ""))
-            // Clear after every paste (cut or copy) so the paste affordance doesn't linger.
-            TransferClipboard.clear()
-        }
+        // Handed to the foreground service, which owns the clip and reports progress on
+        // JobProgressBus — the screen reloads from its completions flow.
+        FileJobService.paste(
+            getApplication(),
+            clip,
+            NodeRef.Drive(currentFolderId, parentId = null, mimeType = ""),
+        )
     }
 
     /** Run a write off the main thread behind the busy overlay, then reload the current folder. */

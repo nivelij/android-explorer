@@ -1,5 +1,7 @@
 package com.android_explorer.archive
 
+import com.android_explorer.job.JobCancelledException
+import com.android_explorer.job.JobListener
 import com.github.junrar.Archive
 import org.apache.commons.compress.archivers.sevenz.SevenZFile
 import org.apache.commons.compress.archivers.sevenz.SevenZOutputFile
@@ -24,25 +26,9 @@ import java.io.InputStream
 import java.io.OutputStream
 import java.util.Collections
 
-/** Thrown when the user cancels an in-flight job. */
-class ArchiveCancelledException : IOException("Cancelled")
-
 /** Thrown when an archive is encrypted and no/incorrect password was supplied. */
 class PasswordRequiredException(val wrong: Boolean) :
     IOException(if (wrong) "Wrong password" else "Password required")
-
-/** Callbacks the [ArchiveManager] uses to report progress and honour cancellation. */
-interface ArchiveListener {
-    fun onProgress(
-        entry: String,
-        entriesDone: Int,
-        entriesTotal: Int,
-        bytesDone: Long,
-        bytesTotal: Long,
-    )
-
-    fun isCancelled(): Boolean
-}
 
 sealed interface ArchiveResult {
     data class Success(val outputPath: String, val entries: Int) : ArchiveResult
@@ -55,20 +41,30 @@ sealed interface ArchiveResult {
 
 /**
  * Pure archive logic — no Android dependencies. Extracts ZIP / 7z / RAR / TAR(.gz/.bz2/.xz) and
- * standalone GZ/BZ2/XZ; creates ZIP / 7z / TAR(.gz/.bz2/.xz). All I/O is streamed in 64 KB chunks
+ * standalone GZ/BZ2/XZ; creates ZIP / 7z / TAR(.gz/.bz2/.xz). All I/O is streamed in 256 KB chunks
  * so huge archives never load into memory, and every chunk polls for cancellation.
+ *
+ * Every file sink is wrapped in a [BufferedOutputStream]: all app-visible Android storage is
+ * FUSE-backed, so throughput is dominated by syscall count, and libraries like junrar write in
+ * whatever granularity they please (down to a single byte).
  */
 object ArchiveManager {
 
-    private const val BUFFER = 64 * 1024
+    private const val BUFFER = 256 * 1024
     private const val REPORT_EVERY = 512L * 1024L
+
+    /** Reused copy buffer — [pump] is a leaf call, so one buffer per thread is enough. */
+    private val scratch = ThreadLocal.withInitial { ByteArray(BUFFER) }
+
+    /** Buffered file sink; [BufferedOutputStream] passes big writes straight through. */
+    private fun sink(file: File): OutputStream = BufferedOutputStream(FileOutputStream(file), BUFFER)
 
     // ---------------------------------------------------------------------- extract
 
     fun extract(
         archive: File,
         destDir: File,
-        listener: ArchiveListener,
+        listener: JobListener,
         password: String? = null,
     ): ArchiveResult {
         return try {
@@ -87,7 +83,7 @@ object ArchiveManager {
                 ArchiveType.XZ -> extractSingle(archive, destDir, listener, Compressor.XZ)
             }
             ArchiveResult.Success(destDir.absolutePath, entries)
-        } catch (_: ArchiveCancelledException) {
+        } catch (_: JobCancelledException) {
             ArchiveResult.Cancelled
         } catch (e: PasswordRequiredException) {
             ArchiveResult.PasswordRequired(e.wrong)
@@ -195,7 +191,7 @@ object ArchiveManager {
         return out
     }
 
-    private fun extractZip(archive: File, destDir: File, listener: ArchiveListener, password: String?): Int {
+    private fun extractZip(archive: File, destDir: File, listener: JobListener, password: String?): Int {
         val encrypted = runCatching { net.lingala.zip4j.ZipFile(archive).isEncrypted }.getOrDefault(false)
         if (encrypted) return extractZipEncrypted(archive, destDir, listener, password)
 
@@ -203,7 +199,7 @@ object ArchiveManager {
     }
 
     /** Encrypted ZIP path via Zip4j (ZipCrypto + AES). Progress is per-entry. */
-    private fun extractZipEncrypted(archive: File, destDir: File, listener: ArchiveListener, password: String?): Int {
+    private fun extractZipEncrypted(archive: File, destDir: File, listener: JobListener, password: String?): Int {
         if (password.isNullOrEmpty()) throw PasswordRequiredException(false)
         val zip = net.lingala.zip4j.ZipFile(archive).apply { setPassword(password.toCharArray()) }
         try {
@@ -234,21 +230,22 @@ object ArchiveManager {
         }
     }
 
-    private fun extractZipPlain(archive: File, destDir: File, listener: ArchiveListener): Int {
+    private fun extractZipPlain(archive: File, destDir: File, listener: JobListener): Int {
         ZipFile.builder().setFile(archive).get().use { zip ->
             val entries = Collections.list(zip.entries)
             val total = entries.filterNot { it.isDirectory }.sumOf { it.size.coerceAtLeast(0) }
+            val dest = DestRoot(destDir)
             var done = 0
             var bytes = 0L
             entries.forEachIndexed { i, entry ->
                 checkCancel(listener)
-                val out = safeChild(destDir, entry.name)
+                val out = dest.child(entry.name)
                 if (entry.isDirectory) {
                     out.mkdirs()
                 } else {
-                    out.parentFile?.mkdirs()
+                    dest.ensureParent(out)
                     zip.getInputStream(entry).use { input ->
-                        FileOutputStream(out).use { fos ->
+                        sink(out).use { fos ->
                             bytes = pump(input, fos, entry.name, i, entries.size, bytes, total, listener)
                         }
                     }
@@ -265,32 +262,35 @@ object ArchiveManager {
         return builder.get()
     }
 
-    private fun extractSevenZ(archive: File, destDir: File, listener: ArchiveListener, password: String?): Int {
-        // First pass: sum sizes for a determinate bar (headers only, no data read).
-        var total = 0L
-        var count = 0
-        sevenZ(archive, password).use { sz ->
-            var e = sz.nextEntry
-            while (e != null) {
-                if (!e.isDirectory) { total += e.size.coerceAtLeast(0); count++ }
-                e = sz.nextEntry
-            }
-        }
+    private fun extractSevenZ(archive: File, destDir: File, listener: JobListener, password: String?): Int {
         var done = 0
         var bytes = 0L
         sevenZ(archive, password).use { sz ->
+            // Totals come from the parsed headers, so there is no second open and no second pass.
+            val entries = sz.entries
+            val count = entries.count { !it.isDirectory }
+            val total = entries.filterNot { it.isDirectory }.sumOf { it.size.coerceAtLeast(0) }
+
+            val dest = DestRoot(destDir)
+            // Read STRICTLY sequentially: getNextEntry() + SevenZFile.read(). Never
+            // getInputStream(entry) — that takes the random-access path (buildDecodingStream with
+            // isRandomAccess=true), which re-decodes a solid block from its start for every entry.
+            // 7z archives are solid by default, so that turns extraction into O(n^2) decompression
+            // and is what made large 7z files take hours.
+            val stream = object : InputStream() {
+                override fun read(): Int = sz.read()
+                override fun read(b: ByteArray, off: Int, len: Int): Int = sz.read(b, off, len)
+            }
             var entry = sz.nextEntry
             while (entry != null) {
                 checkCancel(listener)
-                val out = safeChild(destDir, entry.name)
+                val out = dest.child(entry.name)
                 if (entry.isDirectory) {
                     out.mkdirs()
                 } else {
-                    out.parentFile?.mkdirs()
-                    sz.getInputStream(entry).use { input ->
-                        FileOutputStream(out).use { fos ->
-                            bytes = pump(input, fos, entry.name, done, count, bytes, total, listener)
-                        }
+                    dest.ensureParent(out)
+                    sink(out).use { fos ->
+                        bytes = pump(stream, fos, entry.name, done, count, bytes, total, listener)
                     }
                     done++
                 }
@@ -300,7 +300,7 @@ object ArchiveManager {
         return done
     }
 
-    private fun extractRar(archive: File, destDir: File, listener: ArchiveListener, password: String?): Int {
+    private fun extractRar(archive: File, destDir: File, listener: JobListener, password: String?): Int {
         val rar = if (password.isNullOrEmpty()) Archive(archive) else Archive(archive, password)
         rar.use { arch ->
             val headers = arch.fileHeaders
@@ -308,26 +308,35 @@ object ArchiveManager {
                 throw PasswordRequiredException(false)
             }
             val total = headers.filterNot { it.isDirectory }.sumOf { it.fullUnpackSize.coerceAtLeast(0) }
+            val dest = DestRoot(destDir)
             var done = 0
             var bytes = 0L
+            var sinceReport = 0L
             headers.forEach { header ->
                 checkCancel(listener)
                 val name = (header.fileName ?: header.fileNameString).replace('\\', '/')
-                val out = safeChild(destDir, name)
+                val out = dest.child(name)
                 if (header.isDirectory) {
                     out.mkdirs()
                 } else {
-                    out.parentFile?.mkdirs()
+                    dest.ensureParent(out)
                     val counting = ProgressOutputStream(
-                        FileOutputStream(out),
+                        sink(out),
                         onBytes = { delta ->
                             bytes += delta
-                            listener.onProgress(name, done, headers.size, bytes, total)
+                            // junrar decides the write granularity (down to one byte), so throttle
+                            // to the same cadence as pump() instead of publishing per write.
+                            sinceReport += delta
+                            if (sinceReport >= REPORT_EVERY) {
+                                listener.onProgress(name, done, headers.size, bytes, total)
+                                sinceReport = 0
+                            }
                         },
                         cancelled = listener::isCancelled,
                     )
                     counting.use { arch.extractFile(header, it) }
                     done++
+                    listener.onProgress(name, done, headers.size, bytes, total)
                 }
             }
             return done
@@ -343,20 +352,21 @@ object ArchiveManager {
         Compressor.XZ -> XZCompressorInputStream(raw)
     }
 
-    private fun extractTar(archive: File, destDir: File, listener: ArchiveListener, c: Compressor): Int {
+    private fun extractTar(archive: File, destDir: File, listener: JobListener, c: Compressor): Int {
         BufferedInputStream(FileInputStream(archive)).use { raw ->
             TarArchiveInputStream(wrapDecompress(raw, c)).use { tar ->
+                val dest = DestRoot(destDir)
                 var done = 0
                 var bytes = 0L
                 var entry = tar.nextEntry
                 while (entry != null) {
                     checkCancel(listener)
-                    val out = safeChild(destDir, entry.name)
+                    val out = dest.child(entry.name)
                     if (entry.isDirectory) {
                         out.mkdirs()
                     } else {
-                        out.parentFile?.mkdirs()
-                        FileOutputStream(out).use { fos ->
+                        dest.ensureParent(out)
+                        sink(out).use { fos ->
                             // tar over a compressor is a single stream — total is unknown up front.
                             bytes = pump(tar, fos, entry.name, done, -1, bytes, -1L, listener, closeInput = false)
                         }
@@ -370,13 +380,14 @@ object ArchiveManager {
     }
 
     /** A bare .gz/.bz2/.xz wrapping a single file; output name drops the compression suffix. */
-    private fun extractSingle(archive: File, destDir: File, listener: ArchiveListener, c: Compressor): Int {
+    private fun extractSingle(archive: File, destDir: File, listener: JobListener, c: Compressor): Int {
         val outName = archive.name.substringBeforeLast('.', archive.name).ifBlank { "output" }
-        val out = safeChild(destDir, outName)
-        out.parentFile?.mkdirs()
+        val dest = DestRoot(destDir)
+        val out = dest.child(outName)
+        dest.ensureParent(out)
         BufferedInputStream(FileInputStream(archive)).use { raw ->
             wrapDecompress(raw, c).use { input ->
-                FileOutputStream(out).use { fos ->
+                sink(out).use { fos ->
                     pump(input, fos, outName, 0, 1, 0L, -1L, listener, closeInput = false)
                 }
             }
@@ -390,7 +401,7 @@ object ArchiveManager {
         sources: List<File>,
         dest: File,
         type: ArchiveType,
-        listener: ArchiveListener,
+        listener: JobListener,
     ): ArchiveResult {
         return try {
             require(sources.isNotEmpty()) { "Nothing selected" }
@@ -409,7 +420,7 @@ object ArchiveManager {
                 else -> return ArchiveResult.Failure("Cannot create ${type.label} archives")
             }
             ArchiveResult.Success(dest.absolutePath, written)
-        } catch (_: ArchiveCancelledException) {
+        } catch (_: JobCancelledException) {
             dest.delete()
             ArchiveResult.Cancelled
         } catch (e: Exception) {
@@ -418,7 +429,7 @@ object ArchiveManager {
         }
     }
 
-    private fun compressZip(files: List<File>, base: File, dest: File, total: Long, l: ArchiveListener): Int {
+    private fun compressZip(files: List<File>, base: File, dest: File, total: Long, l: JobListener): Int {
         ZipArchiveOutputStream(dest).use { zip ->
             var bytes = 0L
             files.forEachIndexed { i, f ->
@@ -435,7 +446,7 @@ object ArchiveManager {
         return files.size
     }
 
-    private fun compressSevenZ(files: List<File>, base: File, dest: File, total: Long, l: ArchiveListener): Int {
+    private fun compressSevenZ(files: List<File>, base: File, dest: File, total: Long, l: JobListener): Int {
         SevenZOutputFile(dest).use { sz ->
             var bytes = 0L
             // SevenZOutputFile is not an OutputStream; adapt it so pump() can drive it.
@@ -463,7 +474,7 @@ object ArchiveManager {
         Compressor.XZ -> XZCompressorOutputStream(raw)
     }
 
-    private fun compressTar(files: List<File>, base: File, dest: File, total: Long, l: ArchiveListener, c: Compressor): Int {
+    private fun compressTar(files: List<File>, base: File, dest: File, total: Long, l: JobListener, c: Compressor): Int {
         BufferedOutputStream(FileOutputStream(dest)).use { fileOut ->
             wrapCompress(fileOut, c).use { compressed ->
                 TarArchiveOutputStream(compressed).use { tar ->
@@ -501,17 +512,17 @@ object ArchiveManager {
         entriesTotal: Int,
         startBytes: Long,
         bytesTotal: Long,
-        listener: ArchiveListener,
+        listener: JobListener,
         closeInput: Boolean = false,
         closeOutput: Boolean = false,
     ): Long {
-        val buf = ByteArray(BUFFER)
+        val buf = scratch.get()
         var running = startBytes
         var sinceReport = 0L
         listener.onProgress(entry, entriesDone, entriesTotal, running, bytesTotal)
         try {
             while (true) {
-                if (listener.isCancelled()) throw ArchiveCancelledException()
+                if (listener.isCancelled()) throw JobCancelledException()
                 val n = input.read(buf)
                 if (n < 0) break
                 output.write(buf, 0, n)
@@ -530,20 +541,41 @@ object ArchiveManager {
         return running
     }
 
-    private fun checkCancel(listener: ArchiveListener) {
-        if (listener.isCancelled()) throw ArchiveCancelledException()
+    private fun checkCancel(listener: JobListener) {
+        if (listener.isCancelled()) throw JobCancelledException()
     }
 
-    /** Guards against zip-slip: the resolved child must stay inside [dir]. */
-    private fun safeChild(dir: File, entryName: String): File {
-        val normalized = entryName.replace('\\', '/')
-        val child = File(dir, normalized)
-        val dirPath = dir.canonicalPath
-        val childPath = child.canonicalPath
-        if (childPath != dirPath && !childPath.startsWith(dirPath + File.separator)) {
-            throw IOException("Blocked path traversal: $entryName")
+    /**
+     * Resolves entry names under one destination directory for the life of a job.
+     *
+     * [File.canonicalPath] is a syscall, so the destination's own path is resolved once per job
+     * rather than recomputed identically for every entry, and repeated parent `mkdirs()` calls are
+     * collapsed. An archive of many small files otherwise pays several redundant filesystem
+     * round-trips before a single byte is written. The per-child canonical check stays — it is what
+     * makes the zip-slip guard resistant to symlinks, and it is not the bottleneck.
+     */
+    private class DestRoot(private val dir: File) {
+        private val canonical: String = dir.canonicalPath
+        private var lastParent: File? = null
+
+        /** Guards against zip-slip: the resolved child must stay inside [dir]. */
+        fun child(entryName: String): File {
+            val child = File(dir, entryName.replace('\\', '/'))
+            val childPath = child.canonicalPath
+            if (childPath != canonical && !childPath.startsWith(canonical + File.separator)) {
+                throw IOException("Blocked path traversal: $entryName")
+            }
+            return child
         }
-        return child
+
+        /** Creates the entry's parent, skipping the call when it is the same as the last entry's. */
+        fun ensureParent(child: File) {
+            val parent = child.parentFile ?: return
+            if (parent != lastParent) {
+                parent.mkdirs()
+                lastParent = parent
+            }
+        }
     }
 
     private class ProgressOutputStream(
@@ -552,13 +584,13 @@ object ArchiveManager {
         private val cancelled: () -> Boolean,
     ) : OutputStream() {
         override fun write(b: Int) {
-            if (cancelled()) throw ArchiveCancelledException()
+            if (cancelled()) throw JobCancelledException()
             delegate.write(b)
             onBytes(1)
         }
 
         override fun write(b: ByteArray, off: Int, len: Int) {
-            if (cancelled()) throw ArchiveCancelledException()
+            if (cancelled()) throw JobCancelledException()
             delegate.write(b, off, len)
             onBytes(len.toLong())
         }

@@ -9,7 +9,7 @@ import com.android_explorer.data.FileRepository
 import com.android_explorer.data.RecentFilesRepository
 import com.android_explorer.data.StorageRepository
 import com.android_explorer.data.VolumeStat
-import com.android_explorer.service.ArchiveService
+import com.android_explorer.service.FileJobService
 import com.android_explorer.util.Permissions
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -72,6 +72,6 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
     fun extract(item: FileItem) {
         val f = item.file ?: return
         val dest = fileRepo.extractionTargetFor(f)
-        ArchiveService.extract(getApplication(), f.absolutePath, dest.absolutePath)
+        FileJobService.extract(getApplication(), f.absolutePath, dest.absolutePath)
     }
 }

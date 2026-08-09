@@ -54,11 +54,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.android_explorer.archive.ArchiveProgress
-import com.android_explorer.archive.ArchiveProgressBus
 import com.android_explorer.data.FileItem
 import com.android_explorer.data.SortBy
 import com.android_explorer.data.ViewMode
+import com.android_explorer.job.JobProgressBus
 import com.android_explorer.ui.components.ArchiveActionDialog
 import com.android_explorer.ui.components.ArchiveContentsDialog
 import com.android_explorer.ui.components.CompressDialog
@@ -93,7 +92,6 @@ fun BrowserScreen(
         viewModel.openAt(bound, startDir ?: bound)
     }
     val state by viewModel.state.collectAsStateWithLifecycle()
-    val progress by ArchiveProgressBus.progress.collectAsStateWithLifecycle()
     val details by viewModel.details.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
@@ -107,9 +105,9 @@ fun BrowserScreen(
     var compressItems by remember { mutableStateOf<List<FileItem>>(emptyList()) }
     var deleteItems by remember { mutableStateOf<List<FileItem>>(emptyList()) }
 
-    // Refresh the listing whenever an archive job finishes successfully.
-    androidx.compose.runtime.LaunchedEffect(progress?.state) {
-        if (progress?.state == ArchiveProgress.State.SUCCESS) viewModel.refresh()
+    // Refresh whenever any file job ends — a cancelled or failed job still leaves files on disk.
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        JobProgressBus.completions.collect { viewModel.refresh() }
     }
 
     BackHandler {

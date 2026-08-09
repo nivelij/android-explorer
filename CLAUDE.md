@@ -61,7 +61,11 @@ the code looks right. Every change:
   `editor`, `pdf`, `drive`), each a `…Screen` composable + a `…ViewModel`.
 - `ui/components/` — shared composables: rows (`FileEntry.kt`), menus (`FileContextSheet.kt`), icon +
   accent mapping (`FileIcons.kt`), `StorageMeter`, dialogs.
-- `archive/` + `service/` — archive engine (`ArchiveManager`) run via the foreground `ArchiveService`.
+- `archive/` — archive engine (`ArchiveManager`, `ArchiveType`), pure JVM.
+- `job/` — the shared long-job pipeline used by **both** archiving and transfers: `JobProgress`
+  (`Kind {EXTRACT, COMPRESS, COPY, MOVE}`), `JobProgressBus`, `JobListener`, `TransferJobs`.
+- `service/` — the foreground `FileJobService` that runs every long job. Dependency direction is
+  one-way: `archive` → `job` and `data` → `job`; `job` depends on neither.
 - `util/` — `FileOpener`, `Permissions`, `ThemeManager`, `PluginManager`, `Formatting`, `Wallpaper`.
 
 ## Conventions (follow these)
@@ -81,12 +85,16 @@ the code looks right. Every change:
   items. `path` is the stable list/selection id.
 - **Cross-backend copy/move** goes through the app-wide `TransferClipboard` + `TransferManager.paste(...)`,
   which dispatches on source→dest (incl. upload/download). Don't branch on local-vs-Drive at call sites.
+  Start a paste with `FileJobService.paste(...)`, never by calling `TransferManager` from a ViewModel:
+  the service owns the clip (it clears the clipboard) and the screen refreshes off
+  `JobProgressBus.completions`. The clip reaches the service via a `TransferJobs` token — the service
+  must **not** read `TransferClipboard` itself, which would race the clear.
 - **Add a setting** = a SharedPreferences singleton `object` mirroring `ThemeManager`/`PluginManager`
   (`MutableStateFlow` + prefs read/write), `init()`-ed in `App.onCreate`. (DataStore is a dependency but
   is unused — don't reach for it.)
 - **Context-menu actions are data.** Build a `List<ContextAction>` and hand it to the shared `ContextMenu`
   (`ModalBottomSheet`) in `FileContextSheet.kt`; don't hand-roll a bespoke menu per screen.
-- **Long-running work** runs in the foreground `ArchiveService` with progress on `ArchiveProgressBus` —
+- **Long-running work** runs in the foreground `FileJobService` with progress on `JobProgressBus` —
   never block a screen inline.
 - **Icons** come from `FileIcons.kt` (`iconFor`/`colorFor`/`kindOf`); per-folder overrides via
   `specialFolderIconRes`. Use `material-icons-extended` `Icons.Rounded.*`.
@@ -113,6 +121,23 @@ the code looks right. Every change:
   `!debug.keystore` exception). `versionCode` is still hardcoded to `1` — fine for `adb install -r`, but
   bump it for real Play/version upgrades. For an actual Play Store release you still want a *dedicated*
   release key (not the debug key) via GitHub secrets — see `TODO.md`.
+- **7z must be read STRICTLY sequentially.** In `extractSevenZ`, iterate `getNextEntry()` and read from
+  the `SevenZFile` itself (`sz.read(buf, off, len)`). **Never call `getInputStream(entry)`** — it compiles
+  to `buildDecodingStream(idx, isRandomAccess = true)`, and *interleaving* it with `getNextEntry()`
+  defeats commons-compress's deferred-block optimisation, re-decoding the solid block from its start for
+  every entry. 7z archives are solid by default, so that is **O(n²)** decompression. Measured on a 200 MB
+  solid archive: 100 entries 56.6 s → 1.8 s, 200 entries 112.8 s → 1.7 s (the old cost grows with entry
+  count at constant bytes; the new one is flat). This is what made multi-GB 7z extraction take hours.
+  Note `getInputStream` *alone*, iterating `getEntries()`, is only ~1.4× slower — the interleaving is the
+  trap. Totals come from `getEntries()` (parsed headers), so there is no second open and no pre-pass:
+  a `nextEntry` pre-pass is not free, it decodes the whole stream just to skip it.
+- **Buffer every archive file sink** (`sink()` in `ArchiveManager`). All app-visible Android storage is
+  FUSE-backed, so throughput is dominated by syscall count, and junrar in particular writes in whatever
+  granularity it likes — including one byte at a time via `ProgressOutputStream.write(b: Int)`.
+- **Throttle progress at the source *and* in the bus.** `JobProgressBus.update()` coalesces running ticks
+  to ~10/s (terminal states always pass) so no engine can flood recomposition. Screens must observe
+  `JobProgressBus.completions`, not `progress`, or collecting in a top-level composable body invalidates
+  the whole file list on every tick.
 - **MediaStore under all-files access** works fine; category queries map each row's `_data` → `File` →
   `FileItem`, filtered by `exists()`. Documents have no MediaStore collection — that category queries
   `MediaStore.Files` by `DISPLAY_NAME LIKE '%.<ext>'`.

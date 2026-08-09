@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.android_explorer.data.FileItem
+import com.android_explorer.job.JobProgressBus
 import com.android_explorer.ui.components.ConfirmDialog
 import com.android_explorer.ui.components.DriveContextSheet
 import com.android_explorer.ui.components.FileListItem
@@ -64,6 +65,11 @@ fun DriveBrowserScreen(
     var showNewFolder by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) { viewModel.start() }
+    // Paste now runs in the foreground service rather than behind the busy overlay, so the listing
+    // has to reload when the job ends (including cancelled/failed — files may still have landed).
+    LaunchedEffect(Unit) {
+        JobProgressBus.completions.collect { viewModel.retry() }
+    }
     BackHandler { if (!viewModel.goUp()) onExit() }
 
     // Folder → navigate; file → download to cache then open via the shared resolver.

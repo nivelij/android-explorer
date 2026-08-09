@@ -1,5 +1,6 @@
 package com.android_explorer.archive
 
+import com.android_explorer.job.JobListener
 import net.lingala.zip4j.model.ZipParameters
 import net.lingala.zip4j.model.enums.EncryptionMethod
 import org.apache.commons.compress.archivers.zip.ZipArchiveEntry
@@ -19,7 +20,7 @@ class ArchiveManagerTest {
     @get:Rule
     val tmp = TemporaryFolder()
 
-    private val noop = object : ArchiveListener {
+    private val noop = object : JobListener {
         override fun onProgress(entry: String, entriesDone: Int, entriesTotal: Int, bytesDone: Long, bytesTotal: Long) {}
         override fun isCancelled() = false
     }
@@ -67,6 +68,44 @@ class ArchiveManagerTest {
         val out = tmp.newFolder("sevenz_out")
         assertTrue(ArchiveManager.extract(sevenZ, out, noop) is ArchiveResult.Success)
         assertTreeEquals(src, File(out, "src"))
+    }
+
+    /**
+     * 7z extraction reads strictly sequentially (getNextEntry + SevenZFile.read) rather than via
+     * getInputStream(entry), which re-decodes a solid block per entry. This covers the entry
+     * boundaries that change makes load-bearing: many entries, nested directories, an empty file,
+     * and a file large enough to span several read() calls.
+     */
+    @Test
+    fun sevenZ_manyEntries_extractSequentially() {
+        val src = tmp.newFolder("many")
+        File(src, "nested/deep").mkdirs()
+        val expected = mutableMapOf<String, ByteArray>()
+        repeat(60) { i ->
+            val rel = if (i % 3 == 0) "nested/f$i.bin" else if (i % 3 == 1) "nested/deep/f$i.bin" else "f$i.bin"
+            // Vary sizes so entries end at different offsets within the decoded stream.
+            val bytes = ByteArray(i * 977) { ((it + i) % 251).toByte() }
+            File(src, rel).writeBytes(bytes)
+            expected[rel] = bytes
+        }
+        File(src, "empty.bin").writeBytes(ByteArray(0))
+        expected["empty.bin"] = ByteArray(0)
+        File(src, "big.bin").writeBytes(ByteArray(3 * 1024 * 1024) { (it % 253).toByte() })
+        expected["big.bin"] = File(src, "big.bin").readBytes()
+
+        val sevenZ = File(tmp.root, "many.7z")
+        assertTrue(ArchiveManager.compress(listOf(src), sevenZ, ArchiveType.SEVEN_Z, noop) is ArchiveResult.Success)
+
+        val out = tmp.newFolder("many_out")
+        assertTrue(ArchiveManager.extract(sevenZ, out, noop) is ArchiveResult.Success)
+
+        val root = File(out, "many")
+        expected.forEach { (rel, bytes) ->
+            val f = File(root, rel)
+            assertTrue("missing $rel", f.isFile)
+            assertArrayEquals("content of $rel", bytes, f.readBytes())
+        }
+        assertEquals("extracted file count", expected.size, root.walkTopDown().filter { it.isFile }.count())
     }
 
     @Test

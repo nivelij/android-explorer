@@ -1,7 +1,10 @@
-package com.android_explorer.archive
+package com.android_explorer.job
 
-/** Immutable snapshot of an in-flight (or finished) archive job. Shared by the dialog and notification. */
-data class ArchiveProgress(
+/**
+ * Immutable snapshot of an in-flight (or finished) long-running file job — archive extraction and
+ * compression as well as copy/move transfers. Shared by the dialog and the notification.
+ */
+data class JobProgress(
     val jobId: Long,
     val kind: Kind,
     val title: String,
@@ -13,12 +16,14 @@ data class ArchiveProgress(
     val state: State = State.RUNNING,
     val error: String? = null,
     val outputPath: String? = null,
+    /** Extra detail on a terminal state, e.g. "2 items skipped". */
+    val note: String? = null,
     // Carried so the password prompt can retry the same job.
     val sourcePath: String? = null,
     val destPath: String? = null,
     val wrongPassword: Boolean = false,
 ) {
-    enum class Kind { EXTRACT, COMPRESS }
+    enum class Kind { EXTRACT, COMPRESS, COPY, MOVE }
     enum class State { RUNNING, SUCCESS, ERROR, CANCELLED, NEEDS_PASSWORD }
 
     val finished: Boolean get() = state == State.SUCCESS || state == State.ERROR || state == State.CANCELLED

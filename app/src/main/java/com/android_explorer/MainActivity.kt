@@ -29,7 +29,7 @@ import com.android_explorer.ui.analyzer.StorageAnalyzerScreen
 import com.android_explorer.ui.browser.BrowserScreen
 import com.android_explorer.ui.drive.DriveBrowserScreen
 import com.android_explorer.ui.category.CategoryScreen
-import com.android_explorer.ui.components.ArchiveProgressDialog
+import com.android_explorer.ui.components.JobProgressDialog
 import com.android_explorer.ui.editor.EditorScreen
 import com.android_explorer.ui.gallery.GalleryScreen
 import com.android_explorer.ui.home.HomeScreen
@@ -172,6 +172,6 @@ private fun AppRoot() {
             }
         }
         // Global overlay: shows extract/compress progress on top of any screen.
-        ArchiveProgressDialog()
+        JobProgressDialog()
     }
 }
