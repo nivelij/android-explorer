@@ -160,6 +160,23 @@ the code looks right. Every change:
   **gate the feature**: `DriveAuth.isSupported()` probes `GoogleApiAvailability.isGooglePlayServicesAvailable()
   == SUCCESS` and, when false, `DriveSection` renders the disabled `UnsupportedCard` (cloud-off + short
   reason) instead of Connect. Certification is device-wide, so probe once (not per-tap).
+- **Dialogs with a text field must use `ImeSafeDialog`, never a bare `AlertDialog`.** Material 3's
+  `AlertDialog` applies no IME insets and stacks its actions *below* the field, so on a short window —
+  a 7" 16:9 handheld in landscape leaves ~150dp above the keyboard against ~230dp of dialog — the
+  action row vanishes and the field is clipped. Three things were needed, and each was verified to be
+  load-bearing on the emulator at 1920×1080/420dpi:
+  1. `decorFitsSystemWindows = false` on the `DialogProperties`. A **full-screen dialog window is
+     neither panned nor resized** for the keyboard, so with decor fitting on, `imePadding()` measures
+     **zero** and the card sits behind the keyboard. Forcing `SOFT_INPUT_ADJUST_RESIZE` on the dialog
+     window does *not* fix it either.
+  2. A **compact layout under 500dp of height** — actions beside the field, not below. This is what
+     actually guarantees usability: where the platform pans instead of resizing, panning only keeps the
+     **focused** view on screen, so anything level with the field survives and anything below it does not.
+  3. `ImeAction.Done` wired to confirm, so the name can be committed without reaching a button.
+  Verify any change here in **landscape** (`wm size 1080x1920` + `wm density 420` + `settings put system
+  user_rotation 1`), not just portrait — portrait has room to hide the bug. Note the rotation resets
+  after `adb install`, so re-apply and confirm `dumpsys display` reports `real 1920 x 1080` before
+  driving taps.
 - **OLED + translucent surfaces.** The OLED theme forces `surface`/`background` to pure `#000000`, so a
   card painted with a *translucent* surface tint (e.g. `surfaceVariant.copy(alpha = …)`) collapses into
   the background and vanishes. For panels that must stay visible on every theme, use a **solid** container

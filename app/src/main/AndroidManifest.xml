@@ -37,9 +37,13 @@
             android:name=".MainActivity"
             android:exported="true"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
+            android:windowSoftInputMode="adjustResize"
             android:theme="@style/Theme.AndroidExplorer">
             <!-- No screenOrientation: follows the device (portrait + landscape), respecting auto-rotate.
-                 configChanges keeps Compose state across rotation instead of recreating the activity. -->
+                 configChanges keeps Compose state across rotation instead of recreating the activity.
+                 adjustResize is explicit rather than left to adjustUnspecified: the per-OEM heuristic
+                 otherwise decides pan-vs-resize, and panning a short landscape window pushes content
+                 (notably dialog action rows) off screen. -->
 
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
