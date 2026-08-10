@@ -1,24 +1,18 @@
 package com.android_explorer.ui.components
 
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.FolderOpen
 import androidx.compose.material.icons.rounded.OpenInNew
@@ -43,9 +37,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -58,7 +53,13 @@ fun TextPromptDialog(
     onDismiss: () -> Unit,
     onConfirm: (String) -> Unit,
 ) {
-    var text by remember { mutableStateOf(initial) }
+    // TextFieldValue rather than String so the caret can start at the end of the name — with a plain
+    // String it lands at position 0 and typing prepends, which is exactly the "where am I typing?"
+    // confusion this dialog is meant to avoid.
+    var value by remember {
+        mutableStateOf(TextFieldValue(initial, selection = TextRange(initial.length)))
+    }
+    val text = value.text
     val focus = remember { FocusRequester() }
     val submit = { if (text.isNotBlank()) onConfirm(text.trim()) }
 
@@ -67,11 +68,13 @@ fun TextPromptDialog(
         title = title,
         confirmButton = { TextButton(enabled = text.isNotBlank(), onClick = submit) { Text("OK") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
-    ) {
+    ) { tier ->
         OutlinedTextField(
-            value = text,
-            onValueChange = { text = it },
-            label = { Text(label) },
+            value = value,
+            onValueChange = { value = it },
+            // In the compact bar there is no separate title line, so the field's own label carries
+            // it ("Rename") — a label costs no extra height, sitting inside the field's border.
+            label = { Text(if (tier == DialogTier.COMPACT) title else label) },
             singleLine = true,
             // Done on the keyboard confirms, so the name can be committed without reaching for the
             // buttons — the difference between usable and not on a short landscape window.
@@ -85,23 +88,33 @@ fun TextPromptDialog(
     LaunchedEffect(Unit) { focus.requestFocus() }
 }
 
+/** How much vertical room the window shape gives [ImeSafeDialog] to work with. */
+enum class DialogTier {
+    /** Roomy (portrait): title, field and an action row stacked as usual. */
+    FULL,
+
+    /** Short (landscape on a handheld): one slim bar — field and actions on a single row. */
+    COMPACT,
+}
+
 /**
- * An AlertDialog-shaped dialog that stays fully usable while the keyboard is open.
+ * A dialog for text entry that stays usable when the keyboard leaves very little room.
  *
- * Material 3's [AlertDialog] does not apply IME insets, and its action row is the first thing to be
- * pushed off screen. On a short window — a 7" 16:9 handheld in landscape leaves roughly 150dp above
- * the keyboard, against ~230dp of dialog — the buttons vanish and the field is clipped, so there is
- * no way to see what you are typing or to confirm it.
+ * Material 3's [AlertDialog] applies no IME insets and stacks its actions *below* the field, so the
+ * action row is the first thing pushed off screen. A 7" 16:9 handheld in landscape leaves ~150dp
+ * above the stock keyboard against ~230dp of dialog, and a third-party keyboard such as SwiftKey can
+ * take ~4/5 of the screen, leaving ~80dp — so the buttons vanish and the field gets clipped.
  *
- * Two things make it survive:
+ * The fix is to make the dialog *short* rather than to fight the window system. In [DialogTier.COMPACT]
+ * the title folds into the field's own label (a label costs no extra height, sitting inside the
+ * border) and the actions move beside the field, giving a ~70dp bar. That is what makes it robust:
+ * the platform keeps the **focused** view on screen when it pans for the keyboard, so anything level
+ * with the field survives regardless of how tall the keyboard is.
  *
- * 1. **A compact layout on short windows.** When the window is too short for a stacked dialog, the
- *    actions move beside the field instead of below it. This is what actually guarantees usability:
- *    the platform may *pan* the window rather than resize it, and panning is defined to keep the
- *    **focused** view on screen — so anything level with the field stays visible, while anything far
- *    below it does not. A tall dialog loses its action row for exactly that reason.
- * 2. Opting out of decor fitting so the IME inset reaches the content, then [safeDrawingPadding]
- *    to keep the card clear of the keyboard and the system bars.
+ * Deliberately uses an ordinary dialog window. Going full-screen (`usePlatformDefaultWidth = false`
+ * plus `decorFitsSystemWindows = false`) to consume IME insets by hand was tried and is worse: such a
+ * window is neither panned nor resized, it needs a hand-rolled scrim and tap handling, and it breaks
+ * the IME — `showSoftInput()` is called but the keyboard never appears.
  */
 @Composable
 fun ImeSafeDialog(
@@ -109,80 +122,53 @@ fun ImeSafeDialog(
     title: String,
     confirmButton: @Composable () -> Unit,
     dismissButton: (@Composable () -> Unit)? = null,
-    content: @Composable () -> Unit,
+    content: @Composable (DialogTier) -> Unit,
 ) {
-    // A 7" 16:9 handheld in landscape is ~411dp tall; a phone in portrait is ~800dp+. Below this,
-    // a stacked title/field/actions dialog cannot coexist with the keyboard.
-    val compact = LocalConfiguration.current.screenHeightDp < 500
-    Dialog(
-        onDismissRequest = onDismissRequest,
-        // decorFitsSystemWindows = false is required, not cosmetic: this dialog's window fills the
-        // screen, and a full-screen window is neither panned nor resized for the keyboard. Opting out
-        // of decor fitting is what makes the IME inset get dispatched to the content at all — with it
-        // on, imePadding() measures zero and the card sits behind the keyboard.
-        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                // The window now spans the screen, so "tap outside" is our job, not the platform's.
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                    onClick = onDismissRequest,
-                )
-                // safeDrawing = system bars + cutout + IME, so the card clears all of them.
-                .safeDrawingPadding()
-                .padding(16.dp),
-            contentAlignment = Alignment.Center,
+    // A handheld in landscape is ~410dp tall; a phone in portrait is 800dp+. Below this there is no
+    // room for a stacked dialog alongside any keyboard, so collapse to the one-row bar. Deliberately
+    // keyed off the window shape rather than the measured keyboard height: reading the IME inset
+    // requires a full-screen dialog window, which breaks the IME (see the KDoc above).
+    val tier = if (LocalConfiguration.current.screenHeightDp < 500) {
+        DialogTier.COMPACT
+    } else {
+        DialogTier.FULL
+    }
+    val compact = tier == DialogTier.COMPACT
+    Dialog(onDismissRequest = onDismissRequest) {
+        Surface(
+            shape = RoundedCornerShape(28.dp),
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            modifier = Modifier.widthIn(max = 560.dp),
         ) {
-            Surface(
-                shape = RoundedCornerShape(28.dp),
-                color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                modifier = Modifier
-                    .widthIn(max = 560.dp)
-                    // Swallow taps on the card so they don't reach the dismiss handler above.
-                    .pointerInput(Unit) { detectTapGestures { } },
+            Column(
+                Modifier.padding(
+                    horizontal = if (compact) 16.dp else 24.dp,
+                    vertical = if (compact) 10.dp else 20.dp,
+                ),
             ) {
-                Column(
-                    Modifier
-                        .verticalScroll(rememberScrollState())
-                        .padding(
-                            horizontal = if (compact) 16.dp else 24.dp,
-                            vertical = if (compact) 12.dp else 20.dp,
-                        ),
-                ) {
-                    Text(
-                        title,
-                        style = if (compact) {
-                            MaterialTheme.typography.titleSmall
-                        } else {
-                            MaterialTheme.typography.headlineSmall
-                        },
-                    )
-                    Spacer(Modifier.size(if (compact) 8.dp else 16.dp))
-                    if (compact) {
-                        // Actions sit level with the field, so a panned window keeps them on screen
-                        // together with it.
-                        Row(
-                            Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            Box(Modifier.weight(1f)) { content() }
-                            dismissButton?.invoke()
-                            confirmButton()
-                        }
-                    } else {
-                        content()
-                        Spacer(Modifier.size(20.dp))
-                        Row(
-                            Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
-                        ) {
-                            dismissButton?.invoke()
-                            confirmButton()
-                        }
+                if (compact) {
+                    // No title line: TextPromptDialog folds the title into the field's own label,
+                    // and the actions sit level with the field so panning keeps them all visible.
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Box(Modifier.weight(1f)) { content(tier) }
+                        dismissButton?.invoke()
+                        confirmButton()
+                    }
+                } else {
+                    Text(title, style = MaterialTheme.typography.headlineSmall)
+                    Spacer(Modifier.size(16.dp))
+                    content(tier)
+                    Spacer(Modifier.size(20.dp))
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                    ) {
+                        dismissButton?.invoke()
+                        confirmButton()
                     }
                 }
             }
