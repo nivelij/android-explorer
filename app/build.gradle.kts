@@ -15,8 +15,8 @@ android {
         // Version is injected by CI from the release tag (`-PappVersionName` / `-PappVersionCode`, see
         // .github/workflows/release.yml) so the built-in version — shown on Home via BuildConfig — always
         // matches the GitHub release. The defaults track the current release for local/sideload builds.
-        versionCode = (project.findProperty("appVersionCode") as String?)?.toIntOrNull() ?: 10_301
-        versionName = (project.findProperty("appVersionName") as String?) ?: "1.3.1"
+        versionCode = (project.findProperty("appVersionCode") as String?)?.toIntOrNull() ?: 10_302
+        versionName = (project.findProperty("appVersionName") as String?) ?: "1.3.2"
         vectorDrawables { useSupportLibrary = true }
     }
 

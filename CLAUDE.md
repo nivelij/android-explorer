@@ -164,13 +164,35 @@ the code looks right. Every change:
   `AlertDialog` applies no IME insets and stacks its actions *below* the field, so on a short window —
   a 7" 16:9 handheld in landscape leaves ~150dp above the stock keyboard against ~230dp of dialog, and
   SwiftKey takes ~4/5 of the screen — the action row vanishes and the field is clipped.
-  **Make the dialog short; do not fight the window system.** Under 500dp of height `ImeSafeDialog`
-  collapses to a single ~70dp bar: the title folds into the field's own *label* (a label costs no extra
-  height, sitting inside the border) and the actions sit level with the field. That is what makes it
-  robust at any keyboard height — the platform keeps the **focused** view on screen when it pans, so
-  anything level with the field survives and anything below it does not. Also wire `ImeAction.Done` to
-  confirm, and use `TextFieldValue` with the caret at `TextRange(initial.length)` (a plain `String`
-  puts the caret at 0, so typing prepends).
+  The fix has **two** halves and both are load-bearing.
+  (1) **Make the dialog short.** Under 500dp of height `ImeSafeDialog` collapses to a single ~70dp bar:
+  the title folds into the field's own *label* (a label costs no extra height, sitting inside the
+  border) and the actions sit level with the field, so field and buttons stand or fall together.
+  (2) **Anchor the window to the top** (`window.setGravity(TOP or CENTER_HORIZONTAL)` on the
+  `DialogWindowProvider`). **Never assume the platform moves the dialog out of the keyboard's way** —
+  that is device-dependent. On the emulator (API 33 *and* 34) the dialog window carries
+  `INSET_PARENT_FRAME_BY_IME`, so its parent frame shrinks to the space above the IME and a centred
+  dialog is always visible; on a real Odin 2 Portal (Android 13) it does not, the dialog stays centred
+  on the **full** screen, and SwiftKey — which starts at ~1/3 of the screen height in landscape, far
+  taller than the AOSP keyboard — covers it *entirely*: scrim visible, dialog nowhere. Being short made
+  that worse, not better (a small centred dialog is swallowed whole where a tall one at least peeks
+  out), which is why step 1 alone did not fix it. Pinned to the top, visibility no longer depends on
+  keyboard height or on any window-manager behaviour, since keyboards come up from the bottom.
+  (3) **Wire `ImeAction.Done` to confirm — it is load-bearing, not a convenience.** Top gravity buys
+  *visibility*, not touchability. SwiftKey declares an IME window spanning the whole screen below the
+  status bar **and claims touch over all of it** (`dumpsys input` → the `InputMethod` row's
+  `touchableRegion` is the full display; `dumpsys window windows` shows that window *above* the
+  dialog's). So while SwiftKey is up, **no tap reaches the dialog at any position** — OK/Cancel render
+  but are dead, and even a tap outside it neither dismisses the dialog nor types anything. Moving the
+  dialog cannot fix this; there is nowhere to move it to, and a window that sits above the IME cannot
+  receive text. So `Done` is the *only* confirm path there (dismiss is back: once to drop the keyboard,
+  again to close). Confirmed on an Odin 2 Portal: with the keyboard hidden the very same OK tap works,
+  and on the emulator's AOSP keyboard button taps work throughout — so a dead button under SwiftKey is
+  this, not a Compose hit-testing bug. Test buttons on the emulator and `Done` on the device.
+  Also use `TextFieldValue` with the caret at
+  `TextRange(initial.length)` (a plain `String` puts the caret at 0, so typing prepends).
+  Beware when driving this over adb: SwiftKey autocorrects `input text`, so the field can end up with
+  text you did not send — read it back from `uiautomator dump`, don't trust the string you passed.
   **Do not "fix" this by going full-screen** (`usePlatformDefaultWidth = false` +
   `decorFitsSystemWindows = false`) to consume IME insets by hand — tried and rejected. Such a window
   is neither panned nor resized, needs a hand-rolled scrim, and **breaks the IME**: `showSoftInput()`
@@ -178,10 +200,17 @@ the code looks right. Every change:
   help either. Relatedly, never swallow taps on a dialog card with
   `pointerInput { detectTapGestures {} }` — it eats the press before the field sees it, leaving the
   field unfocusable; use a no-op `clickable`.
-  Verify any change here in **landscape** (`wm size 1080x1920` + `wm density 420` + `settings put system
-  user_rotation 1`), not just portrait — portrait has room to hide the bug. Rotation resets after
+  Verify any change here in **landscape**, not just portrait — portrait has room to hide the bug. Match
+  the Odin's metrics (`wm size 1080x1920` + `wm density 360` → 480dp tall in landscape, the same layout
+  scale as its screenshots) and rotate with `wm user-rotation lock 1` (`settings put system
+  user_rotation` alone is ignored while the launcher is foreground). Rotation resets after
   `adb install`, so re-apply it and confirm `dumpsys display` reports `real 1920 x 1080` before driving
-  taps.
+  taps. A useful extra stress case is `wm size 820x1920`, which leaves the keyboard covering ~2/3 of a
+  landscape window. Because the emulator always keeps dialogs clear of the IME, **the emulator cannot
+  reproduce this class of bug** — check the placement mechanically instead:
+  `dumpsys window windows` should show the dialog's `frame=` starting at the top of its `parent=`.
+  `CompressDialog` and the archive `PasswordDialog` still use bare `AlertDialog`s with a text field and
+  therefore remain exposed to this on such devices.
 - **OLED + translucent surfaces.** The OLED theme forces `surface`/`background` to pure `#000000`, so a
   card painted with a *translucent* surface tint (e.g. `surfaceVariant.copy(alpha = …)`) collapses into
   the background and vanishes. For panels that must stay visible on every theme, use a **solid** container
