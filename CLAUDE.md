@@ -225,12 +225,25 @@ the code looks right. Every change:
   multi-touch, so at 1× the `LazyColumn` keeps native scroll+fling. The `graphicsLayer` uses a
   **top-left `transformOrigin(0,0)`** so the transform math is clean, and zoom **anchors to the pinch/
   double-tap focal point** (`event.calculateCentroid()` / the tap offset) — not a fixed center.
-  Horizontal is `translationX = offsetX` (clamped `[-(scale-1)·w, 0]`); vertical is the `LazyColumn`'s
-  own scroll (so paging still works while zoomed) driven **synchronously via `lazyState.dispatchRawDelta`**
-  for both the focal-zoom correction and finger pan. Do *not* go back to launching a coroutine per event
-  for `scrollBy` — overlapping launches fight the scroll lock and vertical panning barely moves.
-  `dispatchRawDelta` works even though `userScrollEnabled=false` while zoomed (that flag only gates *user*
-  gestures, not programmatic scroll).
+  Horizontal is `translationX = offsetX` (clamped `[-(scale-1)·w, 0]`).
+- **PDF vertical position needs *two* carriers, and dropping either one is a real bug.** The list scroll
+  alone is not enough: `LazyColumn`'s max scroll puts the last content pixel at the bottom of the
+  **unscaled** viewport, so at scale `s` the final `(s-1)/s` of that screenful has no scroll position
+  that can reach it. `translationY = offsetY` (clamped `[-(s-1)·h, 0]`) carries exactly that remainder —
+  and the two ranges sum to precisely the right total, since `(D-h) + (s-1)h/s = D - h/s`. Without it,
+  zooming near the end of a document silently clamps (you get the top of the page, not the point you
+  pinched) and panning down does nothing — the symptom that made the reader feel broken on short PDFs.
+  Everything vertical therefore goes through one `advanceVertical(contentDelta, scale)`, which scrolls
+  the list first and spills the leftover into `offsetY` when advancing, and unwinds in the reverse order
+  when going back, so the pair behaves as a single monotone coordinate. Scroll is driven **synchronously
+  via `lazyState.dispatchRawDelta`** (whose return value is the spill); do *not* go back to launching a
+  coroutine per event for `scrollBy` — overlapping launches fight the scroll lock and vertical panning
+  barely moves. `dispatchRawDelta` works even though `userScrollEnabled=false` while zoomed (that flag
+  only gates *user* gestures, not programmatic scroll) — which is also why a flick while zoomed gets no
+  native fling and `PdfScreen` runs its own `splineBasedDecay` on release.
+- **Keep the last page bitmap while re-rendering.** `PdfPage` holds the previous bitmap until the sharper
+  one lands instead of resetting to `null` (what `produceState` did): falling back to the placeholder
+  changes the item's height, which yanks the scroll position every time the zoom settles.
 - **`items` name clash.** `LazyColumn` and `LazyVerticalGrid` both export `items`; import the grid one
   as `gridItems` (`androidx.compose.foundation.lazy.grid.items as gridItems`).
 - **Multi-line commit messages** with embedded double quotes break shell parsing — use

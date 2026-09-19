@@ -4,6 +4,9 @@ import android.graphics.Bitmap
 import android.graphics.pdf.PdfRenderer
 import android.os.ParcelFileDescriptor
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.AnimationState
+import androidx.compose.animation.core.animateDecay
+import androidx.compose.animation.splineBasedDecay
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -16,9 +19,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -36,8 +39,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.produceState
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -48,12 +52,19 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChanged
+import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -113,8 +124,14 @@ fun PdfScreen(file: File, onClose: () -> Unit) {
                 // Keyed on doc so opening another PDF starts fresh at 1x.
                 var gestureScale by remember(doc) { mutableFloatStateOf(1f) }
                 var offsetX by remember(doc) { mutableFloatStateOf(0f) }
+                var offsetY by remember(doc) { mutableFloatStateOf(0f) }
                 var renderScale by remember(doc) { mutableFloatStateOf(1f) }
+                var viewport by remember { mutableStateOf(IntSize.Zero) }
+                var flingJob by remember { mutableStateOf<Job?>(null) }
                 val lazyState = rememberLazyListState()
+                val scope = rememberCoroutineScope()
+                val density = LocalDensity.current
+                val decay = remember(density) { splineBasedDecay<Float>(density) }
 
                 // Debounce: once the pinch pauses, bump the render resolution to match the zoom.
                 LaunchedEffect(gestureScale) {
@@ -122,22 +139,81 @@ fun PdfScreen(file: File, onClose: () -> Unit) {
                     renderScale = gestureScale.coerceIn(1f, MAX_RENDER_SCALE)
                 }
 
+                // Vertical position is split across two carriers, and it has to be: the LazyColumn's own
+                // scroll runs out exactly when the last content pixel hits the bottom of the *unscaled*
+                // viewport, so at scale s the final (s-1)/s of a screenful has no scroll position that can
+                // reach it. translationY carries that remainder — (s-1)*viewportHeight of screen pixels
+                // that the list cannot express. Without it, zooming near the end of a document silently
+                // clamps (you get the top of the page instead of the point you pinched) and panning down
+                // does nothing. Scroll first / offset last when advancing, and the reverse when going
+                // back, so the two stay a single monotone coordinate.
+                fun advanceVertical(contentDelta: Float, scale: Float) {
+                    val maxOffset = (scale - 1f) * viewport.height
+                    if (contentDelta >= 0f) {
+                        val leftover = contentDelta - lazyState.dispatchRawDelta(contentDelta)
+                        offsetY = (offsetY - leftover * scale).coerceIn(-maxOffset, 0f)
+                    } else {
+                        val target = (offsetY - contentDelta * scale).coerceIn(-maxOffset, 0f)
+                        val leftover = contentDelta + (target - offsetY) / scale
+                        offsetY = target
+                        if (leftover < 0f) lazyState.dispatchRawDelta(leftover)
+                    }
+                }
+
+                // Content position under screen y, in the LazyColumn's own (unscaled) coordinates.
+                fun contentAt(y: Float, scale: Float, offset: Float) = (y - offset) / scale
+
+                fun zoomTo(newScale: Float, cx: Float, cy: Float, panX: Float, panY: Float) {
+                    val oldScale = gestureScale
+                    val oldOffsetY = offsetY
+                    offsetX =
+                        if (newScale <= 1f) 0f
+                        else (cx - (cx - offsetX) * (newScale / oldScale) + panX)
+                            .coerceIn(-viewport.width * (newScale - 1f), 0f)
+                    offsetY = offsetY.coerceIn(-(newScale - 1f) * viewport.height, 0f)
+                    gestureScale = newScale
+                    // Keep the content under the focal point fixed, then apply the finger pan.
+                    val focal = contentAt(cy, oldScale, oldOffsetY) - contentAt(cy, newScale, offsetY)
+                    advanceVertical(focal - panY / newScale, newScale)
+                }
+
+                // While zoomed the LazyColumn's own scroll is disabled, so a flick would stop dead
+                // without this. Both axes decay independently, clamped by advanceVertical/offsetX.
+                suspend fun fling(velocity: Velocity) = coroutineScope {
+                    launch {
+                        var last = 0f
+                        AnimationState(initialValue = 0f, initialVelocity = -velocity.y)
+                            .animateDecay(decay) {
+                                advanceVertical((value - last) / gestureScale, gestureScale)
+                                last = value
+                            }
+                    }
+                    launch {
+                        var last = 0f
+                        AnimationState(initialValue = 0f, initialVelocity = velocity.x)
+                            .animateDecay(decay) {
+                                val max = viewport.width * (gestureScale - 1f)
+                                offsetX = (offsetX + (value - last)).coerceIn(-max, 0f)
+                                last = value
+                            }
+                    }
+                }
+
                 BoxWithConstraints(
                     Modifier
                         .fillMaxSize()
+                        .onSizeChanged { viewport = it }
                         .pointerInput(Unit) {
                             detectTapGestures(
                                 onDoubleTap = { tap ->
-                                    if (gestureScale > 1f) {
-                                        gestureScale = 1f
-                                        offsetX = 0f
-                                    } else {
-                                        // Zoom in centered on the tapped point (same anchoring as pinch).
-                                        offsetX = (tap.x - tap.x * DOUBLE_TAP_SCALE)
-                                            .coerceIn(-size.width * (DOUBLE_TAP_SCALE - 1f), 0f)
-                                        lazyState.dispatchRawDelta(tap.y * (1f - 1f / DOUBLE_TAP_SCALE))
-                                        gestureScale = DOUBLE_TAP_SCALE
-                                    }
+                                    flingJob?.cancel()
+                                    zoomTo(
+                                        if (gestureScale > 1f) 1f else DOUBLE_TAP_SCALE,
+                                        tap.x,
+                                        tap.y,
+                                        0f,
+                                        0f,
+                                    )
                                 },
                             )
                         }
@@ -148,39 +224,39 @@ fun PdfScreen(file: File, onClose: () -> Unit) {
                             // scroll + fling, and taps (no move) still reach the double-tap detector.
                             awaitEachGesture {
                                 awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                                flingJob?.cancel()
+                                val tracker = VelocityTracker()
+                                var handled = false
                                 do {
                                     val event = awaitPointerEvent(PointerEventPass.Initial)
                                     val pressed = event.changes.count { it.pressed }
                                     if (gestureScale > 1f || pressed >= 2) {
-                                        val zoom = event.calculateZoom()
+                                        val centroid = event.calculateCentroid(useCurrent = true)
                                         val pan = event.calculatePan()
-                                        val focal = event.calculateCentroid(useCurrent = true)
-                                        val cx = if (focal.isSpecified) focal.x else size.width / 2f
-                                        val cy = if (focal.isSpecified) focal.y else size.height / 2f
-                                        val oldScale = gestureScale
-                                        val newScale = (oldScale * zoom).coerceIn(1f, MAX_GESTURE_SCALE)
-
-                                        // Horizontal = translationX. Keep the point under the fingers
-                                        // fixed as scale changes (screenX = contentX*scale + offsetX,
-                                        // top-left origin), then apply the finger pan.
-                                        offsetX =
-                                            if (newScale <= 1f) 0f
-                                            else (cx - (cx - offsetX) * (newScale / oldScale) + pan.x)
-                                                .coerceIn(-size.width * (newScale - 1f), 0f)
-                                        gestureScale = newScale
-
-                                        // Vertical = the LazyColumn's own scroll (so paging still works
-                                        // while zoomed). Zoom-about-focal + finger pan, both driven
-                                        // synchronously via dispatchRawDelta — no per-event coroutine, so
-                                        // no scroll-lock contention (the old scrollBy launch barely moved).
-                                        val focalScroll =
-                                            if (oldScale != newScale) cy * (1f / oldScale - 1f / newScale) else 0f
-                                        val scrollDelta = focalScroll - pan.y / newScale
-                                        if (scrollDelta != 0f) lazyState.dispatchRawDelta(scrollDelta)
-
+                                        zoomTo(
+                                            (gestureScale * event.calculateZoom())
+                                                .coerceIn(1f, MAX_GESTURE_SCALE),
+                                            if (centroid.isSpecified) centroid.x else size.width / 2f,
+                                            if (centroid.isSpecified) centroid.y else size.height / 2f,
+                                            pan.x,
+                                            pan.y,
+                                        )
+                                        // The centroid jumps when a finger lifts, so only a single
+                                        // finger feeds the tracker; a pinch resets it instead.
+                                        val finger = event.changes.firstOrNull { it.pressed }
+                                        if (pressed == 1 && finger != null) {
+                                            tracker.addPosition(finger.uptimeMillis, finger.position)
+                                        } else {
+                                            tracker.resetTracking()
+                                        }
+                                        handled = true
                                         event.changes.forEach { if (it.positionChanged()) it.consume() }
                                     }
                                 } while (event.changes.any { it.pressed })
+                                if (handled && gestureScale > 1f) {
+                                    val velocity = tracker.calculateVelocity()
+                                    flingJob = scope.launch { fling(velocity) }
+                                }
                             }
                         },
                 ) {
@@ -196,6 +272,7 @@ fun PdfScreen(file: File, onClose: () -> Unit) {
                                 scaleX = gestureScale
                                 scaleY = gestureScale
                                 translationX = offsetX
+                                translationY = offsetY
                                 transformOrigin = TransformOrigin(0f, 0f)
                             },
                     ) {
@@ -214,9 +291,12 @@ private fun PdfPage(doc: PdfDocument, index: Int, baseWidthPx: Int, renderScale:
     // Render at the zoomed resolution (capped) so zoomed-in text is crisp, not a magnified blur.
     val renderWidthPx = (baseWidthPx * renderScale).roundToInt()
         .coerceIn(1, MAX_RENDER_WIDTH_PX)
-    // Re-render if the page or the target width (rotation / zoom) changes; produceState cancels on dispose.
-    val bitmap by produceState<Bitmap?>(initialValue = null, doc, index, renderWidthPx) {
-        value = runCatching { doc.render(index, renderWidthPx) }.getOrNull()
+    // Re-render if the page or the target width (rotation / zoom) changes, but hold on to the previous
+    // bitmap until the new one lands — dropping to the placeholder would change the item's height and
+    // yank the scroll position every time the zoom settles.
+    var bitmap by remember(doc, index) { mutableStateOf<Bitmap?>(null) }
+    LaunchedEffect(doc, index, renderWidthPx) {
+        runCatching { doc.render(index, renderWidthPx) }.getOrNull()?.let { bitmap = it }
     }
     val bmp = bitmap
     if (bmp != null) {
@@ -230,7 +310,8 @@ private fun PdfPage(doc: PdfDocument, index: Int, baseWidthPx: Int, renderScale:
         Box(
             Modifier
                 .fillMaxWidth()
-                .height(480.dp)
+                // A4 portrait, so the first layout is close enough that the scroll barely shifts.
+                .aspectRatio(1f / 1.414f)
                 .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)),
             contentAlignment = Alignment.Center,
         ) {
