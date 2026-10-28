@@ -27,7 +27,7 @@ import androidx.compose.ui.unit.dp
 import com.android_explorer.data.VolumeStat
 import com.android_explorer.util.Formatting
 
-/** A compact card-less storage row: label, used/free, and a rounded progress bar. */
+/** A compact card-less storage row: label + total, a rounded usage bar, then used/free beneath it. */
 @Composable
 fun StorageMeter(volume: VolumeStat, modifier: Modifier = Modifier) {
     val fraction by animateFloatAsState(targetValue = volume.usedFraction, label = "storage")
@@ -52,7 +52,7 @@ fun StorageMeter(volume: VolumeStat, modifier: Modifier = Modifier) {
             )
             Spacer(Modifier.weight(1f))
             Text(
-                text = "${Formatting.bytes(volume.usedBytes)} used",
+                text = "${Formatting.bytes(volume.totalBytes)} total",
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -70,6 +70,10 @@ fun StorageMeter(volume: VolumeStat, modifier: Modifier = Modifier) {
             trackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.24f),
             color = MaterialTheme.colorScheme.primary,
             strokeCap = androidx.compose.ui.graphics.StrokeCap.Round,
+            // One continuous bar: M3's default gap + end dot split it into what reads as two
+            // separate bars, so the labels below seemed to describe the wrong one.
+            gapSize = 0.dp,
+            drawStopIndicator = {},
         )
 
         Spacer(Modifier.size(8.dp))
@@ -78,15 +82,17 @@ fun StorageMeter(volume: VolumeStat, modifier: Modifier = Modifier) {
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
+            // Each figure sits under the part of the bar it measures: used under the fill, free under
+            // the empty track.
+            Text(
+                text = "${Formatting.bytes(volume.usedBytes)} used",
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.primary,
+            )
             Text(
                 text = "${Formatting.bytes(volume.freeBytes)} free",
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Text(
-                text = "${Formatting.bytes(volume.totalBytes)} total",
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.Medium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
