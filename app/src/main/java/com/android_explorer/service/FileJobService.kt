@@ -19,10 +19,13 @@ import com.android_explorer.R
 import com.android_explorer.archive.ArchiveManager
 import com.android_explorer.archive.ArchiveResult
 import com.android_explorer.archive.ArchiveType
+import com.android_explorer.data.AppRelease
+import com.android_explorer.data.AppUpdateRepository
 import com.android_explorer.data.NodeRef
 import com.android_explorer.data.TransferClipboard
 import com.android_explorer.data.TransferManager
 import com.android_explorer.data.TransferResult
+import com.android_explorer.job.JobCancelledException
 import com.android_explorer.job.JobListener
 import com.android_explorer.job.JobProgress
 import com.android_explorer.job.JobProgressBus
@@ -64,6 +67,7 @@ class FileJobService : Service() {
             ACTION_EXTRACT -> startExtract(intent)
             ACTION_COMPRESS -> startCompress(intent)
             ACTION_COPY -> startCopy(intent)
+            ACTION_UPDATE -> startUpdateDownload(intent)
             else -> {
                 running.set(false)
                 stopSelf()
@@ -90,6 +94,35 @@ class FileJobService : Service() {
                 applicationContext, job.clip, job.dest, busListener(jobId, kind, title),
             )
             finishTransfer(jobId, kind, title, result)
+        }
+    }
+
+    private fun startUpdateDownload(intent: Intent) {
+        val release = AppRelease(
+            tag = intent.getStringExtra(EXTRA_TAG) ?: return abort(),
+            versionCode = intent.getIntExtra(EXTRA_VERSION_CODE, 0),
+            apkName = intent.getStringExtra(EXTRA_APK_NAME) ?: return abort(),
+            apkUrl = intent.getStringExtra(EXTRA_APK_URL) ?: return abort(),
+            apkSize = intent.getLongExtra(EXTRA_APK_SIZE, -1L),
+        )
+        val kind = JobProgress.Kind.UPDATE
+        val title = "Downloading update ${release.tag}"
+        val jobId = SystemClock.elapsedRealtime()
+        beginForeground(JobProgress(jobId, kind, title, totalBytes = release.apkSize))
+        scope.launch {
+            val done = try {
+                val apk = AppUpdateRepository.download(applicationContext, release, busListener(jobId, kind, title))
+                JobProgress(jobId, kind, release.tag, state = JobProgress.State.SUCCESS, outputPath = apk.absolutePath)
+            } catch (_: JobCancelledException) {
+                JobProgress(jobId, kind, title, state = JobProgress.State.CANCELLED)
+            } catch (e: Exception) {
+                JobProgress(jobId, kind, title, state = JobProgress.State.ERROR, error = e.message ?: "Download failed")
+            }
+            JobProgressBus.update(done)
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            if (done.state == JobProgress.State.ERROR) showTerminalNotification(done)
+            running.set(false)
+            stopSelf()
         }
     }
 
@@ -269,6 +302,7 @@ class FileJobService : Service() {
                     JobProgress.Kind.COMPRESS -> "Compressed"
                     JobProgress.Kind.COPY -> "Copied"
                     JobProgress.Kind.MOVE -> "Moved"
+                    JobProgress.Kind.UPDATE -> "Downloaded"
                 }
                 "$verb ${p.title}" to (p.outputPath ?: "Done")
             }
@@ -338,6 +372,7 @@ class FileJobService : Service() {
         const val ACTION_EXTRACT = "com.android_explorer.action.EXTRACT"
         const val ACTION_COMPRESS = "com.android_explorer.action.COMPRESS"
         const val ACTION_COPY = "com.android_explorer.action.COPY"
+        const val ACTION_UPDATE = "com.android_explorer.action.UPDATE"
         const val ACTION_CANCEL = "com.android_explorer.action.CANCEL"
         private const val EXTRA_ARCHIVE = "archive"
         private const val EXTRA_DEST = "dest"
@@ -345,6 +380,11 @@ class FileJobService : Service() {
         private const val EXTRA_TYPE = "type"
         private const val EXTRA_PASSWORD = "password"
         private const val EXTRA_TOKEN = "token"
+        private const val EXTRA_TAG = "tag"
+        private const val EXTRA_VERSION_CODE = "version_code"
+        private const val EXTRA_APK_NAME = "apk_name"
+        private const val EXTRA_APK_URL = "apk_url"
+        private const val EXTRA_APK_SIZE = "apk_size"
 
         /**
          * Runs a paste as a foreground job. Takes ownership of the clip — including clearing the
@@ -376,6 +416,19 @@ class FileJobService : Service() {
                 putStringArrayListExtra(EXTRA_SOURCES, ArrayList(sourcePaths))
                 putExtra(EXTRA_DEST, destPath)
                 putExtra(EXTRA_TYPE, type.name)
+            }
+            context.startForegroundService(i)
+        }
+
+        /** Downloads a release APK; the UI launches the installer off the SUCCESS completion. */
+        fun downloadUpdate(context: Context, release: AppRelease) {
+            val i = Intent(context, FileJobService::class.java).apply {
+                action = ACTION_UPDATE
+                putExtra(EXTRA_TAG, release.tag)
+                putExtra(EXTRA_VERSION_CODE, release.versionCode)
+                putExtra(EXTRA_APK_NAME, release.apkName)
+                putExtra(EXTRA_APK_URL, release.apkUrl)
+                putExtra(EXTRA_APK_SIZE, release.apkSize)
             }
             context.startForegroundService(i)
         }

@@ -1,6 +1,7 @@
 package com.android_explorer
 
 import android.app.Application
+import com.android_explorer.data.AppUpdateRepository
 import com.android_explorer.data.drive.DriveAuth
 import com.android_explorer.data.drive.DriveRepository
 import com.android_explorer.util.PluginManager
@@ -12,8 +13,12 @@ class App : Application() {
         ThemeManager.init(this)
         PluginManager.init(this)
         DriveAuth.init(this)
-        // Purge the transient Drive view-cache from previous sessions so it can't accumulate.
+        // Purge the transient Drive view-cache and stale update APKs from previous sessions so they
+        // can't accumulate.
         val ctx = this
-        Thread { DriveRepository().clearCache(ctx) }.start()
+        Thread {
+            DriveRepository().clearCache(ctx)
+            AppUpdateRepository.clearDownloads(ctx)
+        }.start()
     }
 }

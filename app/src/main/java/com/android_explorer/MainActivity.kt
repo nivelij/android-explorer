@@ -22,9 +22,12 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.android_explorer.data.AppRelease
+import com.android_explorer.data.AppUpdateRepository
 import com.android_explorer.data.FileItem
 import com.android_explorer.data.MediaCategory
 import com.android_explorer.data.VolumeStat
+import com.android_explorer.service.FileJobService
 import com.android_explorer.ui.analyzer.StorageAnalyzerScreen
 import com.android_explorer.ui.browser.BrowserScreen
 import com.android_explorer.ui.drive.DriveBrowserScreen
@@ -38,10 +41,13 @@ import com.android_explorer.ui.home.RecentScreen
 import com.android_explorer.ui.pdf.PdfScreen
 import com.android_explorer.ui.search.SearchScreen
 import com.android_explorer.ui.theme.AndroidExplorerTheme
+import com.android_explorer.ui.update.UpdateDialog
 import com.android_explorer.util.FileOpener
 import com.android_explorer.util.Permissions
 import com.android_explorer.util.PluginManager
 import com.android_explorer.util.ThemeManager
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.io.File
 
 class MainActivity : ComponentActivity() {
@@ -85,6 +91,8 @@ private fun AppRoot() {
     var showRecents by rememberSaveable { mutableStateOf(false) }
     // True while the disk-usage analyzer is open (reached from the Home "Analyze" shortcut).
     var analyzing by rememberSaveable { mutableStateOf(false) }
+    // A newer GitHub release found by the launch-time check, until the user answers the prompt.
+    var update by remember { mutableStateOf<AppRelease?>(null) }
 
     // Shared open resolver, honouring the Plugins settings: built-in editor for text, built-in
     // reader for PDFs (each only when its plugin is enabled), otherwise the system "open with".
@@ -110,6 +118,10 @@ private fun AppRoot() {
         if (Permissions.needsNotificationPermission) {
             notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
+    }
+
+    LaunchedEffect(Unit) {
+        update = withContext(Dispatchers.IO) { AppUpdateRepository.newerRelease() }
     }
 
     // Reload storage/recents on resume — also catches returning from the All-files settings screen.
@@ -170,6 +182,13 @@ private fun AppRoot() {
                     onOpenAnalyzer = { analyzing = true },
                 )
             }
+        }
+        update?.let { release ->
+            UpdateDialog(
+                release = release,
+                onUpdate = { FileJobService.downloadUpdate(context, release); update = null },
+                onDismiss = { update = null },
+            )
         }
         // Global overlay: shows extract/compress progress on top of any screen.
         JobProgressDialog()

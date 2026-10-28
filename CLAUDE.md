@@ -256,6 +256,16 @@ Manual GitHub Actions workflow: **Actions → "Release APK" → Run workflow**, 
 GitHub Release with `generate_release_notes: true`. Note: GitHub's auto "What's Changed" lists merged
 PRs; since work lands directly on `main`, expect mainly the "Full Changelog" compare link.
 
+**Auto-update depends on this workflow.** `AppUpdateRepository` reads `releases/latest` (which skips
+drafts and pre-releases), takes the first `.apk` asset, and compares `versionCodeOf(tag)` with
+`BuildConfig.VERSION_CODE` — so `versionCodeOf` must stay in lockstep with the workflow's
+`MA*10000 + MI*100 + PA` formula, and every release must attach exactly one APK. Bump the
+`versionCode`/`versionName` defaults in `app/build.gradle.kts` to the new tag with each release, or
+local builds will be offered "updates" they already contain. To test the flow on the emulator, build
+with `-PappVersionName=<older> -PappVersionCode=<older code>`. Android 14's installer labels its
+"App installed" screen `com.android_explorer.App` with a generic icon after replacing a running app —
+that is the system's doing (tapping an APK in the browser does the same), not the updater's.
+
 ## Committing
 
 This repo pushes to **github.com/nivelij** (personal account). Commits **must** be authored as

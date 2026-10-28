@@ -2,7 +2,8 @@ package com.android_explorer.job
 
 /**
  * Immutable snapshot of an in-flight (or finished) long-running file job — archive extraction and
- * compression as well as copy/move transfers. Shared by the dialog and the notification.
+ * compression, copy/move transfers, and app-update downloads. Shared by the dialog and the
+ * notification.
  */
 data class JobProgress(
     val jobId: Long,
@@ -23,7 +24,7 @@ data class JobProgress(
     val destPath: String? = null,
     val wrongPassword: Boolean = false,
 ) {
-    enum class Kind { EXTRACT, COMPRESS, COPY, MOVE }
+    enum class Kind { EXTRACT, COMPRESS, COPY, MOVE, UPDATE }
     enum class State { RUNNING, SUCCESS, ERROR, CANCELLED, NEEDS_PASSWORD }
 
     val finished: Boolean get() = state == State.SUCCESS || state == State.ERROR || state == State.CANCELLED

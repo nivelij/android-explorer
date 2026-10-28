@@ -9,6 +9,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Error
 import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.SystemUpdate
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
@@ -17,6 +18,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -33,7 +35,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.android_explorer.job.JobProgress
 import com.android_explorer.job.JobProgressBus
 import com.android_explorer.service.FileJobService
+import com.android_explorer.util.FileOpener
 import com.android_explorer.util.Formatting
+import java.io.File
 
 /** Observes the shared progress bus and shows a Material dialog while a job runs or has just finished. */
 @Composable
@@ -44,6 +48,10 @@ fun JobProgressDialog() {
 
     if (p.awaitingPassword) {
         PasswordDialog(p, context)
+        return
+    }
+    if (p.kind == JobProgress.Kind.UPDATE && p.state == JobProgress.State.SUCCESS) {
+        UpdateReadyDialog(p, context)
         return
     }
 
@@ -106,6 +114,28 @@ private fun PasswordDialog(p: JobProgress, context: android.content.Context) {
     )
 }
 
+/**
+ * Hands the downloaded APK to the system installer. It is launched from here rather than from the
+ * service because Android blocks background activity starts — and this dialog only composes while
+ * the app is in front. The Install button covers a dismissed installer or a download that finished
+ * while the app was in the background.
+ */
+@Composable
+private fun UpdateReadyDialog(p: JobProgress, context: android.content.Context) {
+    val apk = p.outputPath?.let { File(it) } ?: return
+    LaunchedEffect(p.jobId) { FileOpener.installApk(context, apk) }
+    AlertDialog(
+        onDismissRequest = { JobProgressBus.clear() },
+        icon = { Icon(Icons.Rounded.SystemUpdate, contentDescription = null) },
+        title = { Text("Update ready") },
+        text = { Text("${p.title} is downloaded and ready to install.") },
+        confirmButton = {
+            TextButton(onClick = { FileOpener.installApk(context, apk) }) { Text("Install") }
+        },
+        dismissButton = { TextButton(onClick = { JobProgressBus.clear() }) { Text("Later") } },
+    )
+}
+
 private fun dialogTitle(p: JobProgress): String = when (p.state) {
     JobProgress.State.RUNNING -> p.title
     JobProgress.State.SUCCESS -> when (p.kind) {
@@ -113,6 +143,7 @@ private fun dialogTitle(p: JobProgress): String = when (p.state) {
         JobProgress.Kind.COMPRESS -> "Archive created"
         JobProgress.Kind.COPY -> "Copy complete"
         JobProgress.Kind.MOVE -> "Move complete"
+        JobProgress.Kind.UPDATE -> "Update downloaded"
     }
     JobProgress.State.ERROR -> "Operation failed"
     JobProgress.State.CANCELLED -> "Cancelled"
